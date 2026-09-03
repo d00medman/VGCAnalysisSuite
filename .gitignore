@@ -46,3 +46,6 @@ yarn-error.log*
 *.swp
 .DS_Store
 Thumbs.db
+
+# --- Ingest exporter output (derived; regenerate with pokedex/ingest) ---
+pokedex/ingest/out/

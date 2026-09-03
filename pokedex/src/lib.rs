@@ -11,6 +11,7 @@ pub mod db;
 pub mod error;
 pub mod migrate;
 pub mod model;
+pub mod ingest;
 pub mod regulation;
 pub mod resolve;
 

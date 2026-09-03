@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use pokedex::{migrate, regulation, Db};
+use pokedex::model::Snapshot;
+use pokedex::{ingest, migrate, regulation, Db};
+use std::io::Read;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -11,7 +13,15 @@ struct Cli {
     db: PathBuf,
 
     /// Apply pending migrations automatically before running the command.
-    #[arg(long, env = "POKEDEX_AUTO_MIGRATE", global = true)]
+    #[arg(
+        long,
+        env = "POKEDEX_AUTO_MIGRATE",
+        value_parser = truthy,
+        num_args = 0..=1,
+        default_value = "false",
+        default_missing_value = "true",
+        global = true
+    )]
     auto_migrate: bool,
 
     #[command(subcommand)]
@@ -29,6 +39,22 @@ enum Command {
     /// Manage regulations.
     #[command(subcommand)]
     Regulation(RegulationCmd),
+    /// Apply a complete snapshot for one regulation.
+    ///
+    /// The snapshot is treated as COMPLETE: any set-valued field that is present but
+    /// omits an entry closes that entry's interval. Omit the field entirely (JSON
+    /// `null` or absent) to leave stored data untouched.
+    Import {
+        /// Regulation name; overrides the snapshot's own `regulation` field.
+        #[arg(long)]
+        regulation: Option<String>,
+        /// JSON file. Reads stdin when absent or when given as `-`.
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// Apply, report, then roll back.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -72,6 +98,60 @@ fn main() -> Result<()> {
             println!("schema version {}", db.schema_version()?);
         }
         Command::Status => status(&db)?,
+        Command::Import { regulation, file, dry_run } => {
+            db.require_current_schema()?;
+            let raw = match file.as_deref() {
+                None => read_stdin()?,
+                Some(p) if p.as_os_str() == "-" => read_stdin()?,
+                Some(p) => std::fs::read_to_string(p)
+                    .with_context(|| format!("reading {}", p.display()))?,
+            };
+            let mut snap: Snapshot =
+                serde_json::from_str(&raw).context("parsing snapshot JSON")?;
+            if let Some(name) = regulation {
+                snap.regulation = name;
+            }
+
+            let report = if dry_run {
+                // Roll back by applying inside a transaction that is never committed.
+                let tx = db.conn_mut().transaction()?;
+                let r = ingest::apply_in(&tx, &snap)?;
+                tx.rollback()?;
+                r
+            } else {
+                ingest::apply(db.conn_mut(), &snap)?
+            };
+
+            println!("regulation      : {}", snap.regulation);
+            println!("pokemon         : {} upserted", report.pokemon_upserted);
+            println!("variants        : {} upserted", report.variants_upserted);
+            println!(
+                "stats           : {} written, {} unchanged",
+                report.stats_written, report.stats_unchanged
+            );
+            println!(
+                "move data       : {} written, {} unchanged",
+                report.move_data_written, report.move_data_unchanged
+            );
+            println!(
+                "types           : {} opened, {} closed",
+                report.types_opened, report.types_closed
+            );
+            println!(
+                "abilities       : {} opened, {} closed",
+                report.abilities_opened, report.abilities_closed
+            );
+            println!(
+                "learnset        : {} opened, {} closed",
+                report.learnset_opened, report.learnset_closed
+            );
+            if report.is_noop() {
+                println!("=> no-op: snapshot matched stored state exactly");
+            }
+            if dry_run {
+                println!("=> dry run, rolled back");
+            }
+        }
         Command::Regulation(cmd) => {
             db.require_current_schema()?;
             match cmd {
@@ -98,6 +178,24 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Accept the shell conventions for booleans, not just clap's `true`/`false`.
+/// `POKEDEX_AUTO_MIGRATE=1` is what anyone writing a compose file will reach for.
+fn truthy(s: &str) -> std::result::Result<bool, String> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "y" | "on" => Ok(true),
+        "0" | "false" | "no" | "n" | "off" | "" => Ok(false),
+        other => Err(format!(
+            "expected a boolean (1/0, true/false, yes/no, on/off), got {other:?}"
+        )),
+    }
+}
+
+fn read_stdin() -> Result<String> {
+    let mut s = String::new();
+    std::io::stdin().read_to_string(&mut s).context("reading stdin")?;
+    Ok(s)
 }
 
 fn status(db: &Db) -> Result<()> {

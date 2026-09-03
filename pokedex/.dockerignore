@@ -1,7 +1,8 @@
-target/
-data/
-*.db
-*.db-wal
-*.db-shm
-.git
-.env
+# Allowlist, not a denylist. A 198M `ingest/` node_modules tree appeared in this
+# directory mid-build and silently entered the context; enumerating what to EXCLUDE
+# loses that race every time. Only what the Dockerfile actually COPYs gets in.
+*
+!src
+!migrations
+!Cargo.toml
+!Cargo.lock
