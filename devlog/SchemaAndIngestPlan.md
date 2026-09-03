@@ -1,7 +1,10 @@
 # Pokedex — Schema Rationale & Ingest Plan
 
-Date: 2026-09-03 (rev 5)
-Status: **migrations written and validated. Rust + Docker not started.**
+Date: 2026-09-03 (rev 6)
+Status: **migrations + Rust core + container files written and validated natively.**
+**Blocked on:** docker daemon is installed but `inactive`/`disabled` — needs
+`sudo systemctl start docker` before the image can be built. Everything daemon-independent
+has been verified (see below).
 Location: `/home/barbaroja/Videos/pokemon_recordings/pokedex/`
 
 ## Source of truth
@@ -146,39 +149,25 @@ problem. Re-submitting an identical snapshot is a no-op, so idempotency holds.
 - no duplicate type across slots (replaces the dropped UNIQUE — see decision 6)
 - base pokemon inserted before its variants (self-FK ordering — the two-pass)
 
-### Record format — **OPEN, blocks the Rust phase**
-Named but never specified through rev 4. A fresh session would invent a different shape. Draft
-for approval:
-```json
-{
-  "regulation": "Regulation G",
-  "abilities": [ {"name":"blaze","description":"Powers up Fire-type moves in a pinch."} ],
-  "moves": [ {"name":"flamethrower","type":"fire","damage_class":"special","power":90,
-              "accuracy":100,"pp":15,"priority":0,
-              "secondary_effect":"May burn the target.","effect_chance":10} ],
-  "pokemon": [
-    {"national_dex_no":6,"form_slug":"","name":"Charizard","genus":"Flame Pokémon",
-     "height_dm":17,"weight_hg":905,
-     "variant": null,
-     "stats":{"hp":78,"attack":84,"defense":78,"sp_attack":109,"sp_defense":85,"speed":100},
-     "types":["fire","flying"],
-     "abilities":{"primary":"blaze","secondary":null,"hidden":"solar-power"},
-     "learnset":[{"move":"flamethrower","method":"level-up","level":46},
-                 {"move":"fly","method":"machine"}]},
-    {"national_dex_no":6,"form_slug":"mega-x","name":"Mega Charizard X",
-     "variant":{"base_form_slug":"","kind":"mega","required_item":"Charizardite X"},
-     "stats":{"hp":78,"attack":130,"defense":111,"sp_attack":130,"sp_defense":85,"speed":100},
-     "types":["fire","dragon"],
-     "abilities":{"primary":"tough-claws","secondary":null,"hidden":null},
-     "learnset":[]}
-  ]
-}
+### Record format — RESOLVED, was never a real blocker
+Rev 5 flagged the JSON shape as blocking. It was not. The interface is the Rust struct in
+`src/model.rs`; JSON is whatever serde derives from it, and a pipeline using this as a *module*
+calls `upsert_snapshot(&Snapshot)` and never serializes anything.
+
+**The real issue underneath it — absence is destructive.** "Feed dense, store sparse" means a
+snapshot is interpreted as COMPLETE: anything missing from a provided set has its interval
+closed. A scraper stage that fetched only stats and left `learnset` empty would wipe a learnset
+it never looked at. Encoded in the types rather than documented:
+
+```rust
+pub types:    Option<Vec<String>>,     // None       = not provided, leave stored data alone
+pub abilities: Option<Abilities>,      // Some(vec![]) = explicitly empty, close every interval
+pub learnset: Option<Vec<LearnsetEntry>>,
 ```
-Shape rationale: `types` is an **ordered array** so slot 1/2 is positional and "slot 2 requires
-slot 1" is unrepresentable rather than validated. `abilities` is an object with named slots.
-Moves and abilities are defined **once** at top level and referenced by name from each pokemon,
-so a 1000-pokemon snapshot doesn't repeat move definitions. `variant.base_form_slug` identifies
-the base within the same `national_dex_no`.
+
+`types` is an ordered `Vec` so slot 1/2 is positional — "slot 2 requires slot 1" becomes
+unrepresentable rather than validated. Moves and abilities are defined once at `Snapshot` level
+and referenced by name, so a 1000-pokemon snapshot does not repeat move definitions.
 
 ## Containerization (NOT YET IMPLEMENTED)
 
@@ -242,16 +231,31 @@ in conjunction.
 | # | Phase | Status |
 |---|---|---|
 | 1 | Migrations `0001`-`0003`, syntax + semantics validated in memory | **DONE** |
-| 2 | Settle the JSON record format | **BLOCKS phase 4** |
-| 3 | Scaffold + Docker: `cargo init`, Cargo.toml, Dockerfile, compose, `.env`, `.dockerignore` | not started |
-| 4 | Rust core: `db.rs`, `migrate.rs`, `error.rs`, `model.rs`, `resolve.rs`, `regulation.rs` | not started |
-| 5 | Rust ingest: scalar diffing, interval open/close, the 3 validations | not started |
-| 6 | CLI wiring | not started |
-| 7 | Integrated test: full flow from empty dir, natively **and** in-container | not started |
+| 2 | JSON record format | **DROPPED** — not a real interface; see above |
+| 3 | Scaffold + container files: Cargo.toml, Dockerfile, compose, `.env`, `.dockerignore` | **DONE** (image unbuilt — daemon down) |
+| 4 | Rust core: `error.rs`, `migrate.rs`, `db.rs`, `model.rs`, `resolve.rs`, `regulation.rs`, `main.rs` | **DONE** |
+| 5 | Rust ingest: scalar diffing, interval open/close, the 3 validations (`ingest.rs`) | not started |
+| 6 | CLI `import` subcommand | not started |
+| 7 | Integrated test: full flow natively **and** in-container | blocked on daemon |
+
+### Verified natively (rev 6)
+- `cargo build` and `cargo build --release --locked` both clean
+- `init` applies all 3 migrations; re-running `migrate` is a no-op
+- Regulations added **out of order** (A, C, then B) list chronologically with correct derived
+  windows — B got id 3 yet sorts between A and C, proving ordering is date-derived not id-derived
+- Malformed date rejected by `regulation::valid_date`; duplicate `effective_from` rejected by the
+  UNIQUE that keeps the ordering total
+- `status` reports 18 types / 324 chart rules / 25 natures / 7 variant kinds
+- **Release binary is 2.7M and links only glibc** (`ldd` shows no `libsqlite3`) — SQLite 3.46.0
+  is statically bundled. This is what makes the `debian:bookworm-slim` runtime correct.
+- Build context after `.dockerignore` is **120K** against a 243M directory
+- Bundled SQLite is 3.46.0 while the system CLI is 3.37.2; migrations were validated on the
+  older one, so the floor is 3.37 — comfortably above the 3.31 needed for generated columns and
+  3.28 for windowed views
 
 ### Phase 7 verification targets
-Marked ✓ where already proven against the raw SQL in phase 1; those still need re-proving through
-the Rust path.
+Marked ✓ where proven against raw SQL in phase 1; those still need re-proving through the Rust
+path once `ingest.rs` exists.
 - ✓ Electric→Gyarados = 400, Ground→Charizard = 0
 - ✓ Variant resolves different stats than its base in the same regulation
 - ✓ Late arrival absent from earlier regulations

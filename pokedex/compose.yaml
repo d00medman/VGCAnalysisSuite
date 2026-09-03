@@ -1,0 +1,15 @@
+services:
+  pokedex:
+    build: .
+    image: pokedex:dev
+    # Bind mount over named volume so `sqlite3 data/pokedex.db` works from the host.
+    # Requires matching uid: SQLite needs write permission on the DIRECTORY, not just
+    # the db file, to create -wal/-shm/journal siblings.
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./data:/data
+    environment:
+      POKEDEX_AUTO_MIGRATE: "1"
+      # WAL needs shared memory + working POSIX locking. Fine on native Linux bind
+      # mounts; set to DELETE if this ever runs on a Docker Desktop FS shim.
+      POKEDEX_JOURNAL_MODE: "${POKEDEX_JOURNAL_MODE:-WAL}"

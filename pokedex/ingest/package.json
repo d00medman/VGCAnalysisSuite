@@ -1,0 +1,13 @@
+{
+  "name": "pokedex-ingest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Showdown -> pokedex snapshot exporter. See devlog/DataSourcingResearchResults.md.",
+  "scripts": {
+    "export:regmb": "node showdown-snapshot.js champions",
+    "export:regma": "node showdown-snapshot.js championsregma"
+  },
+  "dependencies": {
+    "pokemon-showdown": "0.11.11"
+  }
+}
