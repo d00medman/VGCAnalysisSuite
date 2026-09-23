@@ -79,7 +79,8 @@ impl Decoder {
             "-fps_mode",
             "passthrough",
             "-vf",
-            &format!("crop={}:{}:{}:{},showinfo", rect.w, rect.h, rect.x, rect.y),
+            // showinfo is only here for pts_time; its per-frame checksums are wasted work.
+            &format!("crop={}:{}:{}:{},showinfo=checksum=0", rect.w, rect.h, rect.x, rect.y),
             "-f",
             "rawvideo",
             "-pix_fmt",
@@ -136,6 +137,11 @@ impl Decoder {
     /// when the input is opened, so it is available by the first frame.
     pub fn duration(&self) -> Option<f64> {
         self.duration.get().copied()
+    }
+
+    /// Shared handle to the duration, readable after the decoder moves to another thread.
+    pub fn duration_cell(&self) -> Arc<OnceLock<f64>> {
+        Arc::clone(&self.duration)
     }
 
     /// Next frame, or `None` at end of stream.

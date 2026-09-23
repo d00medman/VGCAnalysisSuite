@@ -19,6 +19,7 @@
 
 use crate::text::{Glyph, Row};
 use anyhow::{bail, Context, Result};
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -34,6 +35,47 @@ pub struct Template {
     pub w: u32,
     pub h: u32,
     pub bits: Vec<bool>,
+    packed: Packed,
+}
+
+impl Template {
+    pub fn new(label: String, top: i32, w: u32, h: u32, bits: Vec<bool>) -> Self {
+        let packed = Packed::new(&bits, w, h);
+        Self { label, top, w, h, bits, packed }
+    }
+}
+
+/// A bitmap as one `u128` per scanline (bit `x` = column `x`) plus its ink count, so overlap
+/// is a popcount per row instead of a test per pixel. `None` when a bitmap is too wide to
+/// shift by a pixel within 128 bits; scoring then falls back to the per-pixel path.
+#[derive(Clone, Debug)]
+struct Packed(Option<(Vec<u128>, u32)>);
+
+impl Packed {
+    fn new(bits: &[bool], w: u32, h: u32) -> Self {
+        if w >= 128 {
+            return Packed(None);
+        }
+        let rows: Vec<u128> = (0..h)
+            .map(|y| {
+                let row = &bits[(y * w) as usize..((y + 1) * w) as usize];
+                row.iter().enumerate().fold(0u128, |acc, (x, &b)| acc | ((b as u128) << x))
+            })
+            .collect();
+        let ones = rows.iter().map(|r| r.count_ones()).sum();
+        Packed(Some((rows, ones)))
+    }
+}
+
+/// Classification results for glyph bitmaps already seen. The same glyphs recur frame after
+/// frame while a message is typed and held, so most lookups skip template matching. Owned by
+/// one reader (one per worker thread); `classify` is pure, so caching never changes a reading.
+#[derive(Default)]
+pub struct GlyphCache(HashMap<(i32, u32, u32, Vec<u128>), Option<(usize, f32)>>);
+
+impl GlyphCache {
+    /// Scenery and fades produce endless unique fragments; drop everything past this.
+    const MAX_ENTRIES: usize = 100_000;
 }
 
 #[derive(Default)]
@@ -58,7 +100,40 @@ pub struct Reading {
 }
 
 /// Overlap (intersection over union) of two bitmaps, best over ±1px shifts.
-fn score(a_bits: &[bool], aw: u32, ah: u32, b: &Template) -> f32 {
+fn score(a_bits: &[bool], a_packed: &Packed, aw: u32, ah: u32, b: &Template) -> f32 {
+    match (&a_packed.0, &b.packed.0) {
+        (Some((a, a_ones)), Some((bp, b_ones))) => score_packed(a, *a_ones, bp, *b_ones),
+        _ => score_scalar(a_bits, aw, ah, b),
+    }
+}
+
+/// `score` on packed rows. Bits outside either bitmap are zero, so the union over the shared
+/// bounding box is `|a| + |b| - |a ∩ b|` and only the intersection needs counting. The integer
+/// counts equal the per-pixel path's, so the scores are bit-identical.
+fn score_packed(a: &[u128], a_ones: u32, b: &[u128], b_ones: u32) -> f32 {
+    let mut best = 0.0f32;
+    for dy in -1i32..=1 {
+        for dx in -1i32..=1 {
+            let mut inter = 0u32;
+            for (y, &ar) in a.iter().enumerate() {
+                let by = y as i32 - dy;
+                if by < 0 || by as usize >= b.len() {
+                    continue;
+                }
+                let br = b[by as usize];
+                let br = if dx >= 0 { br << dx } else { br >> -dx };
+                inter += (ar & br).count_ones();
+            }
+            let union = a_ones + b_ones - inter;
+            if union > 0 {
+                best = best.max(inter as f32 / union as f32);
+            }
+        }
+    }
+    best
+}
+
+fn score_scalar(a_bits: &[bool], aw: u32, ah: u32, b: &Template) -> f32 {
     let mut best = 0.0f32;
     for dy in -1i32..=1 {
         for dx in -1i32..=1 {
@@ -90,24 +165,58 @@ impl Atlas {
     /// Best-matching template for a glyph, as (label, score). Ties go to the earlier template,
     /// so results are deterministic for a given atlas file.
     pub fn classify(&self, g: &Glyph, baseline: i32) -> Option<(&str, f32)> {
+        let packed = Packed::new(&g.bits, g.w, g.h);
+        self.classify_packed(g, &packed, baseline).map(|(i, s)| (self.templates[i].label.as_str(), s))
+    }
+
+    /// `classify`, returning the template index.
+    fn classify_packed(&self, g: &Glyph, packed: &Packed, baseline: i32) -> Option<(usize, f32)> {
         let top = g.y0 - baseline;
-        let mut best: Option<(&str, f32)> = None;
-        for t in &self.templates {
+        let mut best: Option<(usize, f32)> = None;
+        for (i, t) in self.templates.iter().enumerate() {
             if (t.w as i32 - g.w as i32).abs() > 3
                 || (t.h as i32 - g.h as i32).abs() > 3
                 || (t.top - top).abs() > 3
             {
                 continue;
             }
-            let s = score(&g.bits, g.w, g.h, t);
+            let s = score(&g.bits, packed, g.w, g.h, t);
             if best.map_or(true, |(_, b)| s > b) {
-                best = Some((&t.label, s));
+                best = Some((i, s));
             }
         }
         best
     }
 
     pub fn read_rows(&self, rows: &[Row]) -> Reading {
+        self.read_rows_cached(rows, &mut GlyphCache::default())
+    }
+
+    /// `classify` through `cache`.
+    fn classify_cached(&self, g: &Glyph, baseline: i32, cache: &mut GlyphCache) -> Option<(&str, f32)> {
+        let packed = Packed::new(&g.bits, g.w, g.h);
+        let hit = match &packed.0 {
+            Some((rows, _)) => {
+                let key = (g.y0 - baseline, g.w, g.h, rows.clone());
+                match cache.0.get(&key) {
+                    Some(hit) => *hit,
+                    None => {
+                        let r = self.classify_packed(g, &packed, baseline);
+                        if cache.0.len() >= GlyphCache::MAX_ENTRIES {
+                            cache.0.clear();
+                        }
+                        cache.0.insert(key, r);
+                        r
+                    }
+                }
+            }
+            None => self.classify_packed(g, &packed, baseline),
+        };
+        hit.map(|(i, s)| (self.templates[i].label.as_str(), s))
+    }
+
+    /// `read_rows`, reusing classifications from `cache`.
+    pub fn read_rows_cached(&self, rows: &[Row], cache: &mut GlyphCache) -> Reading {
         let mut text = String::new();
         let mut conf = 1.0f32;
         let mut unknown = 0;
@@ -117,7 +226,7 @@ impl Atlas {
             }
             let mut prev_label = "";
             for (gi, g) in row.glyphs.iter().enumerate() {
-                let (label, s) = match self.classify(g, row.baseline) {
+                let (label, s) = match self.classify_cached(g, row.baseline, cache) {
                     Some((label, s)) if s >= MIN_SCORE => (label, s),
                     other => {
                         unknown += 1;
@@ -143,21 +252,16 @@ impl Atlas {
     /// Add a labelled sample unless an equivalent template for the same label exists.
     pub fn add(&mut self, label: &str, g: &Glyph, baseline: i32) -> bool {
         let top = g.y0 - baseline;
+        let packed = Packed::new(&g.bits, g.w, g.h);
         let dup = self.templates.iter().any(|t| {
             t.label == label
                 && (t.top - top).abs() <= 1
-                && score(&g.bits, g.w, g.h, t) >= DEDUPE_SCORE
+                && score(&g.bits, &packed, g.w, g.h, t) >= DEDUPE_SCORE
         });
         if dup {
             return false;
         }
-        self.templates.push(Template {
-            label: label.to_string(),
-            top,
-            w: g.w,
-            h: g.h,
-            bits: g.bits.clone(),
-        });
+        self.templates.push(Template::new(label.to_string(), top, g.w, g.h, g.bits.clone()));
         true
     }
 
@@ -195,7 +299,7 @@ impl Atlas {
                     bail!("malformed bitmap for glyph on line {}", n + 1);
                 }
                 let bits = rows.iter().flat_map(|r| r.bytes().map(|b| b == b'#')).collect();
-                atlas.templates.push(Template { label, top, w, h, bits });
+                atlas.templates.push(Template::new(label, top, w, h, bits));
             } else {
                 bail!("unrecognised atlas line {}: {line}", n + 1);
             }
@@ -218,5 +322,39 @@ impl Atlas {
             }
         }
         std::fs::write(path, out).with_context(|| format!("writing {}", path.display()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Deterministic pseudo-random bitmap with roughly `density` ink.
+    fn bitmap(seed: &mut u64, w: u32, h: u32, density: u64) -> Vec<bool> {
+        (0..w * h)
+            .map(|_| {
+                *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                (*seed >> 33) % 100 < density
+            })
+            .collect()
+    }
+
+    #[test]
+    fn packed_score_matches_per_pixel_score() {
+        let mut seed = 7;
+        for i in 0..2000u32 {
+            let (aw, ah) = (1 + i % 50, 1 + (i / 3) % 60);
+            let (bw, bh) = (1 + (i / 7) % 50, 1 + (i / 11) % 60);
+            let density = [5, 30, 60, 95][(i % 4) as usize];
+            let a = bitmap(&mut seed, aw, ah, density);
+            let t = Template::new("x".into(), 0, bw, bh, bitmap(&mut seed, bw, bh, density));
+            let packed = Packed::new(&a, aw, ah);
+            assert!(packed.0.is_some());
+            assert_eq!(
+                score(&a, &packed, aw, ah, &t).to_bits(),
+                score_scalar(&a, aw, ah, &t).to_bits(),
+                "{aw}x{ah} vs {bw}x{bh}"
+            );
+        }
     }
 }

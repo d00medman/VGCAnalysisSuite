@@ -19,6 +19,8 @@ pub struct Progress {
     t_start: f64,
     span: Option<f64>,
     frames: u64,
+    /// Draw on the next `frame` regardless of `INTERVAL` (the line was just cleared).
+    redraw: bool,
 }
 
 pub fn clock(t: f64) -> String {
@@ -43,6 +45,7 @@ impl Progress {
             t_start,
             span,
             frames: 0,
+            redraw: false,
         }
     }
 
@@ -57,6 +60,17 @@ impl Progress {
         }
     }
 
+    /// Erase the in-place status line so other output (the transcript on stdout) starts on a
+    /// clean line; the status is redrawn on the next frame.
+    pub fn clear_line(&mut self) {
+        if self.enabled && self.tty {
+            let mut e = std::io::stderr().lock();
+            let _ = write!(e, "\r\x1b[2K");
+            let _ = e.flush();
+            self.redraw = true;
+        }
+    }
+
     /// Fill in the span once the decoder knows the file's duration.
     pub fn set_span_if_unknown(&mut self, span: Option<f64>) {
         if self.span.is_none() {
@@ -67,9 +81,10 @@ impl Progress {
     /// Call once per decoded frame with its timestamp; prints at most every `INTERVAL`.
     pub fn frame(&mut self, t: f64, messages: usize) {
         self.frames += 1;
-        if !self.enabled || self.last.elapsed() < INTERVAL {
+        if !self.enabled || (!self.redraw && self.last.elapsed() < INTERVAL) {
             return;
         }
+        self.redraw = false;
         self.last = Instant::now();
         let done = (t - self.t_start).max(0.0);
         let wall = self.started.elapsed().as_secs_f64();

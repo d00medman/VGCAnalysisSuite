@@ -50,6 +50,19 @@ const MESSAGE_LEFT_TOLERANCE: i32 = 6;
 /// Word spaces are ~10px. A gap far larger than that ends the message; whatever lies
 /// beyond it is scenery that happens to share the row.
 const MAX_INTRA_LINE_GAP: i32 = 60;
+/// The message line's baseline within the ROI: measured 70–71 on all 45 labelled crops.
+/// Scenery fragments that start at the margin sit elsewhere (Pyroar's tail: 66–108).
+///
+/// TODO(two-line): no message has been seen wrapping onto a second line. A second line
+/// would fall below this band (and mostly below the ROI), so if one ever appears, both the
+/// ROI and this gate need extending rather than the tolerance widening.
+const MESSAGE_BASELINE: i32 = 70;
+const MESSAGE_BASELINE_TOLERANCE: i32 = 6;
+/// A text row's tallest glyph is at least this tall. Every message contains a capital, an
+/// ascender or `!`/`?` (34–37px measured; x-height alone is ≈20–22), and full-width CJK
+/// characters are taller still, so this holds for any script. Fragments of a specular rim
+/// never get this tall: Pyroar's tail pieces at sunroom 03:16–03:28 peaked at 16px.
+const MIN_TALLEST_GLYPH: u32 = 24;
 
 /// Binary mask of one glyph, cropped to its bounding box. Coordinates are within the ROI.
 #[derive(Clone, Debug)]
@@ -115,14 +128,17 @@ impl Image<'_> {
     }
 }
 
+fn is_ink((r, g, b): (u8, u8, u8)) -> bool {
+    let lo = r.min(g).min(b);
+    let hi = r.max(g).max(b);
+    lo >= INK_MIN && hi - lo <= INK_MAX_CHROMA
+}
+
 pub fn ink_mask(img: &Image) -> Vec<bool> {
     let mut m = vec![false; (img.w * img.h) as usize];
     for y in 0..img.h {
         for x in 0..img.w {
-            let (r, g, b) = img.px(x, y);
-            let lo = r.min(g).min(b);
-            let hi = r.max(g).max(b);
-            m[(y * img.w + x) as usize] = lo >= INK_MIN && hi - lo <= INK_MAX_CHROMA;
+            m[(y * img.w + x) as usize] = is_ink(img.px(x, y));
         }
     }
     m
@@ -149,12 +165,22 @@ fn blobs(mask: &[bool], w: u32, h: u32) -> Vec<Blob> {
             seen[si] = true;
             stack.push((sx, sy));
             let mut b = Blob { x0: sx, y0: sy, x1: sx + 1, y1: sy + 1, pixels: Vec::new() };
+            // A blob that has outgrown any glyph is discarded by `segment`, but it must still be
+            // flooded so none of its pixels seed blobs of their own. Its pixels are not kept:
+            // bright scenery (move effects, flashes) makes such blobs huge.
+            let mut oversize = false;
             while let Some((x, y)) = stack.pop() {
-                b.pixels.push((x, y));
                 b.x0 = b.x0.min(x);
                 b.y0 = b.y0.min(y);
                 b.x1 = b.x1.max(x + 1);
                 b.y1 = b.y1.max(y + 1);
+                if !oversize && (b.x1 - b.x0 > MAX_GLYPH_W || b.y1 - b.y0 > MAX_GLYPH_H) {
+                    oversize = true;
+                    b.pixels = Vec::new();
+                }
+                if !oversize {
+                    b.pixels.push((x, y));
+                }
                 for dy in -1i32..=1 {
                     for dx in -1i32..=1 {
                         let (nx, ny) = (x as i32 + dx, y as i32 + dy);
@@ -275,9 +301,18 @@ fn rows(glyphs: Vec<Glyph>) -> Vec<Row> {
         .collect()
 }
 
-/// Rows of message text: left-aligned at the message margin, truncated at the first gap
-/// too wide to be a space.
+/// Rows of message text: left-aligned at the message margin, sitting on the message
+/// baseline, tall enough to contain a real character, and truncated at the first gap too
+/// wide to be a space. All of these are geometric, never "does it match the atlas" — see
+/// the module note on non-Latin scripts.
 pub fn text_rows(img: &Image) -> Vec<Row> {
+    // A row's first glyph starts on an ink pixel inside the margin band, so with no ink there
+    // no row can survive the filter below — skip segmenting the frame at all.
+    let band = (MESSAGE_LEFT - MESSAGE_LEFT_TOLERANCE).max(0) as u32
+        ..((MESSAGE_LEFT + MESSAGE_LEFT_TOLERANCE + 1) as u32).min(img.w);
+    if !(0..img.h).any(|y| band.clone().any(|x| is_ink(img.px(x, y)))) {
+        return Vec::new();
+    }
     segment(img)
         .into_iter()
         .filter(|r| (r.glyphs[0].x0 - MESSAGE_LEFT).abs() <= MESSAGE_LEFT_TOLERANCE)
@@ -291,5 +326,7 @@ pub fn text_rows(img: &Image) -> Vec<Row> {
             r
         })
         .filter(|r| r.glyphs.len() >= 3)
+        .filter(|r| (r.baseline - MESSAGE_BASELINE).abs() <= MESSAGE_BASELINE_TOLERANCE)
+        .filter(|r| r.glyphs.iter().map(|g| g.h).max().unwrap_or(0) >= MIN_TALLEST_GLYPH)
         .collect()
 }

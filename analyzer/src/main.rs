@@ -1,6 +1,6 @@
 use analyzer::atlas::{side_bearing, Atlas};
 use analyzer::decode::{ffmpeg_path, Decoder};
-use analyzer::episode::Tracker;
+use analyzer::transcribe::{transcribe, Status};
 use analyzer::text::{self, Image, Row, MESSAGE_ROI};
 use analyzer::pngio;
 use analyzer::progress::{clock, Progress};
@@ -17,8 +17,7 @@ struct Cli {
     ffmpeg: Option<PathBuf>,
 
     /// Glyph atlas.
-    #[arg(long, env = "ANALYZER_ATLAS", global = true,
-          default_value = concat!(env!("CARGO_MANIFEST_DIR"), "/atlas/glyphs.txt"))]
+    #[arg(long, env = "ANALYZER_ATLAS", global = true, default_value = analyzer::DEFAULT_ATLAS)]
     atlas: PathBuf,
 
     /// Suppress progress output on stderr.
@@ -116,36 +115,52 @@ fn transcript(
     jsonl: bool,
     verbose: bool,
 ) -> Result<()> {
-    let (mut dec, mut progress) = start(ffmpeg, video, range, verbose)?;
-    let mut tracker = Tracker::default();
-    // Unbuffered in effect: each message is flushed as soon as it is final, so the transcript
-    // grows live instead of appearing all at once when the run ends.
+    let progress = Progress::new(verbose, range.ss.unwrap_or(0.0), range.t);
+    progress.log(&format!("video  {}", video.display()));
+    progress.log(&format!("ffmpeg {}", ffmpeg.display()));
+    progress.log("decoding (first status line in ~2s)");
+    // Each message is flushed as soon as it is final, so the transcript grows live instead
+    // of appearing all at once when the run ends.
     let mut out = std::io::stdout().lock();
-    let mut count = 0;
-    let emit = |m: analyzer::episode::Message, out: &mut dyn Write, count: &mut usize| -> Result<()> {
-        if jsonl {
-            writeln!(out, "{}", serde_json::to_string(&m)?)?;
-        } else {
-            let flag = if m.clean { "" } else { "  [unclear]" };
-            writeln!(out, "[{}] {}{flag}", clock(m.t0), m.text)?;
-        }
-        out.flush()?;
-        *count += 1;
-        Ok(())
-    };
-    while let Some(f) = dec.next_frame()? {
-        progress.set_span_if_unknown(dec.duration().map(|d| d - range.ss.unwrap_or(0.0)));
-        let rows = text::text_rows(&roi_image(&f.rgb));
-        let reading = (!rows.is_empty()).then(|| atlas.read_rows(&rows));
-        if let Some(m) = tracker.push(f.t, reading.as_ref()) {
-            emit(m, &mut out, &mut count)?;
-        }
-        progress.frame(f.t, count);
+    let mut write_err = None;
+    // Both callbacks touch the status line: frames redraw it, messages clear it first.
+    let progress = std::cell::RefCell::new(progress);
+    let mut last = Status::default();
+    let messages = transcribe(
+        ffmpeg,
+        atlas,
+        video,
+        range.ss,
+        range.t,
+        |s| {
+            let mut progress = progress.borrow_mut();
+            progress.set_span_if_unknown(s.span);
+            progress.frame(s.t, s.messages);
+            last = *s;
+        },
+        |m| {
+            progress.borrow_mut().clear_line();
+            let r = if jsonl {
+                serde_json::to_string(m).map_err(anyhow::Error::from).and_then(|j| Ok(writeln!(out, "{j}")?))
+            } else {
+                let flag = if m.clean { "" } else { "  [unclear]" };
+                writeln!(out, "[{}] {}{flag}", clock(m.t0), m.text).map_err(Into::into)
+            };
+            if let Err(e) = r.and_then(|_| Ok(out.flush()?)) {
+                write_err.get_or_insert(e);
+            }
+        },
+    )?;
+    if let Some(e) = write_err {
+        return Err(e);
     }
-    for m in tracker.flush() {
-        emit(m, &mut out, &mut count)?;
-    }
-    progress.finish(count);
+    let progress = progress.into_inner();
+    progress.finish(messages.len());
+    let t = last.timing;
+    progress.log(&format!(
+        "stages: decode wait {:.1}s · segment {:.1}s · read {:.1}s (segment/read summed over {} workers)",
+        t.decode, t.segment, t.read, t.workers
+    ));
     Ok(())
 }
 
