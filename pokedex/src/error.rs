@@ -7,7 +7,7 @@ use std::fmt;
 /// (skippable, report it) from "the database is unavailable" (abort the batch).
 #[derive(Debug)]
 pub enum Error {
-    Sqlite(rusqlite::Error),
+    Postgres(postgres::Error),
     Json(serde_json::Error),
     Io(std::io::Error),
 
@@ -21,14 +21,14 @@ pub enum Error {
     /// Referenced regulation does not exist.
     UnknownRegulation(String),
 
-    /// Record violates an invariant SQLite cannot declare.
+    /// Record violates an invariant the schema cannot declare.
     Validation(String),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Sqlite(e) => write!(f, "sqlite: {e}"),
+            Error::Postgres(e) => write!(f, "postgres: {e}"),
             Error::Json(e) => write!(f, "json: {e}"),
             Error::Io(e) => write!(f, "io: {e}"),
             Error::SchemaTooNew { found, known } => write!(
@@ -50,7 +50,7 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Error::Sqlite(e) => Some(e),
+            Error::Postgres(e) => Some(e),
             Error::Json(e) => Some(e),
             Error::Io(e) => Some(e),
             _ => None,
@@ -58,9 +58,9 @@ impl std::error::Error for Error {
     }
 }
 
-impl From<rusqlite::Error> for Error {
-    fn from(e: rusqlite::Error) -> Self {
-        Error::Sqlite(e)
+impl From<postgres::Error> for Error {
+    fn from(e: postgres::Error) -> Self {
+        Error::Postgres(e)
     }
 }
 impl From<serde_json::Error> for Error {

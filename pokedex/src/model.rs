@@ -17,6 +17,41 @@ pub struct Snapshot {
     pub moves: Vec<MoveRecord>,
     #[serde(default)]
     pub pokemon: Vec<PokemonRecord>,
+    /// Every item legal in this regulation. Complete when present: a stored item missing
+    /// from it has its legality closed. `None` leaves legality untouched.
+    #[serde(default)]
+    pub items: Option<Vec<ItemRecord>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ItemRecord {
+    /// Slug, e.g. `focus-sash`.
+    pub name: String,
+    /// As battle text prints it, e.g. `Focus Sash`.
+    pub display_name: String,
+    pub category: ItemCategory,
+    #[serde(default)]
+    pub fling_power: Option<i64>,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ItemCategory {
+    MegaStone,
+    Berry,
+    Other,
+}
+
+impl ItemCategory {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ItemCategory::MegaStone => "mega-stone",
+            ItemCategory::Berry => "berry",
+            ItemCategory::Other => "other",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

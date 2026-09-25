@@ -32,8 +32,8 @@
  * ----------------------------------
  * - Level-50 stats. They are a pure function of base stat + SP + nature, computed on
  *   read. Champions fixes IVs at 31 and the level at 50, so there is nothing to store.
- * - Natures, items, the type chart. Natures are seeded (0003); items have no table
- *   yet; the chart is seeded (0002) and only checked here.
+ * - Natures and the type chart. Natures are seeded (0003); the chart is seeded (0002)
+ *   and only checked here.
  * - `genus`. Showdown has no flavour text. That comes from PokeAPI later.
  */
 
@@ -237,6 +237,23 @@ function firstSecondaryChance(move) {
   return list[0].chance;
 }
 
+// ---------------------------------------------------------------- items
+
+/**
+ * Legal held items. Legality differs per regulation (M-A has fewer than M-B), which is
+ * why the snapshot carries the complete list and ingest stores it as intervals.
+ * Mega stones are detected through `megaStone`, the same test `variantOf` uses.
+ */
+function itemRecord(item) {
+  return {
+    name: slug(item.name),
+    display_name: item.name,
+    category: item.megaStone ? 'mega-stone' : item.isBerry ? 'berry' : 'other',
+    fling_power: item.fling ? item.fling.basePower : null,
+    description: item.shortDesc || item.desc || null,
+  };
+}
+
 function abilityRecord(ability) {
   return { name: slug(ability.name), description: ability.shortDesc || null };
 }
@@ -298,6 +315,7 @@ function buildSnapshot(dex, regulation, warnings) {
     abilities: dex.abilities.all().filter((a) => !a.isNonstandard).map(abilityRecord),
     moves: legalMoves(dex).map(moveRecord),
     pokemon,
+    items: dex.items.all().filter((i) => !i.isNonstandard).map(itemRecord),
   };
 }
 
@@ -324,6 +342,7 @@ function main() {
   console.log(`  pokemon   ${snapshot.pokemon.length}`);
   console.log(`  moves     ${snapshot.moves.length}`);
   console.log(`  abilities ${snapshot.abilities.length}`);
+  console.log(`  items     ${snapshot.items.length}`);
   console.log(`  learnset  ${snapshot.pokemon.reduce((n, p) => n + (p.learnset ? p.learnset.length : 0), 0)}`);
   for (const w of warnings) console.log(`  note: ${w}`);
 }

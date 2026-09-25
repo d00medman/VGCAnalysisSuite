@@ -1,0 +1,15 @@
+# Allowlist. The repo root holds raw_recordings/ (~90 GB); enumerating exclusions would
+# eventually let something huge into the build context, so exclude everything and
+# re-include only what server/Dockerfile copies.
+*
+!analyzer/Cargo.toml
+!analyzer/src
+!analyzer/atlas/glyphs.txt
+!analyzer/atlas/lexicon.txt
+!analyzer/vendor/fetch-ffmpeg.sh
+!pokedex/Cargo.toml
+!pokedex/src
+!pokedex/migrations
+!server/Cargo.toml
+!server/Cargo.lock
+!server/src

@@ -1,70 +1,39 @@
-//! Connection handling and per-connection pragmas.
+//! Connection handling.
 
 use crate::error::Result;
 use crate::migrate;
-use rusqlite::Connection;
-use std::path::Path;
-
-/// Journal mode. WAL by default; `DELETE` exists as an escape hatch because WAL needs
-/// shared memory and working POSIX locking, which some container filesystem shims
-/// (Docker Desktop on macOS/Windows) do not provide. Set `POKEDEX_JOURNAL_MODE` to
-/// change it without rebuilding.
-fn journal_mode() -> String {
-    std::env::var("POKEDEX_JOURNAL_MODE").unwrap_or_else(|_| "WAL".to_string())
-}
+use postgres::{Client, NoTls};
 
 pub struct Db {
-    conn: Connection,
+    client: Client,
 }
 
 impl Db {
-    /// Open (creating if absent) and apply per-connection pragmas.
+    /// Connect with a libpq-style URL or key=value string, e.g.
+    /// `postgres://pokedex:pokedex@localhost:5432/pokedex`.
     ///
     /// Deliberately does NOT migrate. A pipeline embedding this library decides when
     /// schema changes happen; only the CLI opts in, via `POKEDEX_AUTO_MIGRATE`.
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let conn = Connection::open(path)?;
-        Self::configure(&conn)?;
-        Ok(Db { conn })
+    pub fn connect(url: &str) -> Result<Self> {
+        Ok(Db { client: Client::connect(url, NoTls)? })
     }
 
-    pub fn open_in_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory()?;
-        Self::configure(&conn)?;
-        Ok(Db { conn })
+    /// Wrap an already-configured client (TLS, search_path, ...).
+    pub fn from_client(client: Client) -> Self {
+        Db { client }
     }
 
-    fn configure(conn: &Connection) -> Result<()> {
-        // MUST be per-connection: `PRAGMA foreign_keys` is a no-op inside a
-        // transaction, so it cannot live in a migration file.
-        conn.pragma_update(None, "foreign_keys", "ON")?;
-        conn.pragma_update(None, "journal_mode", journal_mode())?;
-        conn.pragma_update(None, "busy_timeout", 5_000)?;
-        conn.pragma_update(None, "synchronous", "NORMAL")?;
-        Ok(())
-    }
-
-    pub fn conn(&self) -> &Connection {
-        &self.conn
-    }
-    pub fn conn_mut(&mut self) -> &mut Connection {
-        &mut self.conn
+    pub fn client(&mut self) -> &mut Client {
+        &mut self.client
     }
 
     pub fn migrate(&mut self) -> Result<Vec<&'static str>> {
-        migrate::migrate(&mut self.conn)
+        migrate::migrate(&mut self.client)
     }
-    pub fn schema_version(&self) -> Result<i32> {
-        migrate::current_version(&self.conn)
+    pub fn schema_version(&mut self) -> Result<i32> {
+        migrate::current_version(&mut self.client)
     }
-    pub fn require_current_schema(&self) -> Result<()> {
-        migrate::require_current(&self.conn)
-    }
-
-    /// Convenience for tests and for `--dry-run`: a fully migrated in-memory database.
-    pub fn open_migrated_in_memory() -> Result<Self> {
-        let mut db = Self::open_in_memory()?;
-        db.migrate()?;
-        Ok(db)
+    pub fn require_current_schema(&mut self) -> Result<()> {
+        migrate::require_current(&mut self.client)
     }
 }
