@@ -5,6 +5,65 @@ greppable; **[unverified]** = not checked in-session; reversals get a new entry.
 
 ---
 
+## 2026-09-25 (rev 3) — Regulation M-C: sourced from Showdown master, not npm
+
+### 1. M-C exists upstream, but not on npm
+
+M-C runs 2026-09-09 → 2026-12-02. Showdown added it on launch day ("Add Champions
+Regulation M-C", 2026-09-09) and has pushed learnset and mechanics fixes since (last seen
+2026-09-20). npm `pokemon-showdown` is still **0.11.11 (2026-07-28)**, so `npm install`
+cannot produce M-C.
+
+Master renamed the mods: **`champions` is now M-C**, M-B moved to **`championsregmb`**, and
+**`championsregma` was deleted**. npm 0.11.11 is now the only packaged source of M-A.
+Master also needs **Node ≥ 22** to build (local is 18), so it is built in `node:22`.
+
+Checked at master `a5df827` (2026-09-22) against the official announcement: 383 pokemon
+(+35 formes over M-B, 0 removed) — the 24 new species, Persian-Alola, the Squawkabilly
+colours, Megas Salamence/Golisopod/Baxcalibur and Megas Absol-Z/Garchomp-Z/Lucario-Z. All
+have learnsets. 515 moves, 166 items (+18), 15,764 learnset rows. Strength Sap and Wish
+drop to 5 PP; Archaludon loses Metal Burst and Mirror Coat.
+
+- `DECISION:` M-A from npm 0.11.11 `championsregma`; M-B and M-C from master pinned to a
+  git SHA (`championsregmb`, `champions`). Each snapshot records its source.
+- `DECISION:` snapshots are committed under `pokedex/snapshots/`. **Reverses rev 2's**
+  "`out/` is gitignored": pinning npm no longer buys reproducibility once one source is a
+  git SHA that needs a Docker build to turn into JSON.
+
+### 2. Master's M-B carries corrections — and one artifact
+
+Diffing M-B from npm against M-B from master (same exporter):
+
+- **Corrections:** 28 species gain Slash (Garchomp, Scizor, Kingambit, …); Politoed loses
+  Pound. Worth taking, and **only possible before M-C is imported** — ingest refuses a
+  snapshot older than one with stored data.
+- **Artifact:** the 15 M-C signature moves (Pyro Ball, Snipe Shot, Overdrive, Meteor
+  Assault, …) are marked legal in `championsregmb`, which inherits move legality from
+  `champions`. No M-B species learns them.
+
+- `DECISION:` the M-B export drops moves no M-B species learns. Stored moves are unaffected
+  (`move_data` is scalar, so omission closes nothing); this only keeps Pyro Ball from
+  resolving as an M-B move.
+- `DECISION:` corrected M-B is imported before M-C, as its own commit.
+
+### 3. Master moved descriptions out of the data objects
+
+On master, `ability.shortDesc` and `item.shortDesc` are `undefined`; the text lives in
+`data/text/` behind `dex.loadTextData()`. The rev 2 exporter would have written **null
+over all 316 ability and 148 item descriptions**. `loadTextData()` resolves per mod, so
+Champions-specific text (Piercing Drill's 1/4 damage) survives.
+
+- `DECISION:` the exporter falls back to `loadTextData()` when the object has no text.
+
+### 4. The curly apostrophe is not a slug bug (yet)
+
+`Farfetch’d` and `Sirfetch’d` use U+2019. `slug()` did not strip it, but pokemon names are
+stored unslugged, and no move, ability or item name contains one, so no stored key was
+affected. `slug()` now strips it anyway. **Open:** whether transcript matching expects the
+straight `'` that battle text may print. **[unverified]**
+
+---
+
 ## 2026-09-03 (rev 2) — sourcing settled, exporter written, schema fit assessed
 
 ### 1. Stats: no level or IV dimension
