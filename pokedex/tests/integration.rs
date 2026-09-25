@@ -379,6 +379,51 @@ fn migrations_are_idempotent() {
     db.require_current_schema().unwrap();
 }
 
+#[test]
+fn older_snapshot_after_a_newer_one_is_refused() {
+    let mut db = two_regs();
+    let p = poke(6, "", "Charizard", &["fire", "flying"], stats(78, 84, 78, 109, 85, 100));
+    ingest::apply(db.client(), &snap("Reg B", vec![p.clone()])).unwrap();
+    let err = ingest::apply(db.client(), &snap("Reg A", vec![p.clone()])).unwrap_err();
+    assert!(err.to_string().contains("oldest first"), "{err}");
+    // Re-applying the newest one is still allowed.
+    assert!(ingest::apply(db.client(), &snap("Reg B", vec![p])).unwrap().is_noop());
+}
+
+#[test]
+fn display_names_are_stored_and_not_blanked_by_bare_references() {
+    let mut db = two_regs();
+    let mut s = snap("Reg A", vec![]);
+    s.moves = vec![MoveRecord {
+        name: "kings-shield".into(),
+        display_name: Some("King's Shield".into()),
+        type_name: "steel".into(),
+        damage_class: DamageClass::Status,
+        power: None,
+        accuracy: None,
+        pp: Some(10),
+        priority: 4,
+        secondary_effect: None,
+        effect_chance: None,
+    }];
+    s.abilities = vec![AbilityRecord {
+        name: "flower-veil".into(),
+        display_name: Some("Flower Veil".into()),
+        description: None,
+    }];
+    let mut p = poke(670, "", "Floette", &["fairy"], stats(54, 45, 47, 75, 98, 52));
+    p.abilities = Some(Abilities { primary: Some("flower-veil".into()), secondary: None, hidden: None });
+    p.learnset = Some(vec![LearnsetEntry {
+        move_name: "kings-shield".into(), method: LearnMethod::Machine, level: None,
+    }]);
+    s.pokemon = vec![p];
+    ingest::apply(db.client(), &s).unwrap();
+
+    let name = |db: &mut Db, sql: &str| -> String { db.client().query_one(sql, &[]).unwrap().get(0) };
+    assert_eq!(name(&mut db, "SELECT display_name FROM move WHERE name = 'kings-shield'"), "King's Shield");
+    assert_eq!(name(&mut db, "SELECT display_name FROM ability WHERE name = 'flower-veil'"), "Flower Veil");
+}
+
 fn item(name: &str, display: &str, category: ItemCategory) -> ItemRecord {
     ItemRecord {
         name: name.into(),

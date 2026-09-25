@@ -634,3 +634,79 @@ a {
 .matchups td {
   padding: 3px 0;
 }
+
+/* ---------------------------------------------------------------- hover cards */
+
+.term {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.term.k-pokemon { text-decoration-color: var(--accent); }
+.term.k-move { text-decoration-color: #e8590c; }
+.term.k-item { text-decoration-color: #2b8a3e; }
+.term.k-ability { text-decoration-color: #9c36b5; }
+
+.hovercard {
+  position: fixed;
+  z-index: 10;
+  width: 340px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  font-size: 14px;
+}
+
+.hovercard p {
+  margin: 4px 0 0;
+}
+
+.hc-entry + .hc-entry {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.hc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.hc-head .tag {
+  margin-left: 0;
+}
+
+.hc-stats {
+  width: 100%;
+  margin-top: 6px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.hc-stats th {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.hc-stats th,
+.hc-stats td {
+  text-align: center;
+  padding: 1px 2px;
+}
+
+.hc-stats td.total {
+  font-weight: 700;
+}
+
+.hc-foot {
+  margin-top: 6px;
+  text-align: right;
+}

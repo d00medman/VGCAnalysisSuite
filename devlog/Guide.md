@@ -61,6 +61,11 @@ WEB_PORT=9000 docker compose -f "$REPO/compose.yaml" up --build -d
    **History**, newest first; click one to see its transcript. Lines the reader could not
    fully identify are greyed out and marked *unclear*. The page address includes the
    video's id (`#<id>`), so reloading or sharing the link reopens it.
+4. Names in the transcript are underlined: Pokémon in blue, moves orange, items green,
+   abilities purple. Hover one for a card with its base stats, move data, or description,
+   as of the regulation in force on the upload date. Click a Pokémon to open its Pokédex
+   page. Matching is naive, exact names only: nicknames are missed, and an ordinary word
+   that happens to be a name can match (a player called "Guts" matches the ability).
 
 Uploaded videos are kept, about 1 GB each, so any of them can be transcribed again with
 **Transcribe again**, for example after the reader improves.

@@ -57,6 +57,9 @@ impl ItemCategory {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AbilityRecord {
     pub name: String,
+    /// As battle text prints it, e.g. `Flower Veil`.
+    #[serde(default)]
+    pub display_name: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
 }
@@ -64,6 +67,9 @@ pub struct AbilityRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoveRecord {
     pub name: String,
+    /// As battle text prints it, e.g. `King's Shield`. The slug cannot be turned back.
+    #[serde(default)]
+    pub display_name: Option<String>,
     /// Elemental type name. Versioned: move types change (Bite went Normal -> Dark).
     #[serde(rename = "type")]
     pub type_name: String,

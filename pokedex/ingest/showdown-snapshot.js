@@ -62,8 +62,8 @@ const REGIONAL_PREFIXES = ['Alola', 'Galar', 'Hisui', 'Paldea'];
  *
  * This matches the convention already seeded for `type.name` and is the same shape
  * PokeAPI uses, so the cosmetic layer (sprites, genus, dex flavour) can join on it
- * later without a translation table. The cost is that display names are lost --
- * `move` and `ability` have no display_name column yet, unlike `type`.
+ * later without a translation table. The slug cannot be turned back into the display
+ * name (King's Shield, U-turn), so records carry `display_name` too.
  */
 function slug(name) {
   return name
@@ -203,6 +203,7 @@ function legalMoves(dex) {
 function moveRecord(move) {
   return {
     name: slug(move.name),
+    display_name: move.name,
     type: slug(move.type),
     damage_class: move.category.toLowerCase(),
 
@@ -255,7 +256,7 @@ function itemRecord(item) {
 }
 
 function abilityRecord(ability) {
-  return { name: slug(ability.name), description: ability.shortDesc || null };
+  return { name: slug(ability.name), display_name: ability.name, description: ability.shortDesc || null };
 }
 
 // ---------------------------------------------------------------- type chart check

@@ -168,6 +168,12 @@ uniform across all three tables.
 6. Link transcript lines to events (see §10): the tables exist, the linkage does not.
 7. `variant.required_item` is still free text ('Charizardite X'); it could now reference
    `item(id)`, since every mega stone is an item row.
+9. **Snapshots must be applied oldest first.** Set sync closes intervals at the snapshot's
+   regulation, so an older snapshot applied after a newer one would close the newer
+   one's windows before they open (found by a dry run: 31 M-B items would have been made
+   illegal "at M-A"). Ingest now refuses it (`refuse_if_superseded`). Correcting an old
+   regulation's data therefore means re-importing it and every later one, in order,
+   into a fresh database.
 8. Regulations: M-A 2026-04-08, M-B 2026-06-17, M-C 2026-09-09 (current). M-C has no
    snapshot yet: Showdown's latest npm release (0.11.11, 2026-07-28) predates it. Until
    one is imported, M-C resolves to M-B's data carried forward, bans included.
@@ -196,6 +202,13 @@ file on a volume that has to live next to the one process writing it.
 - Nothing to migrate: the old `data/pokedex.db` only held test rows.
 - Not done: TLS (needed for most managed Postgres hosts; add `postgres-native-tls` or
   `tokio-postgres-rustls` when a host is picked).
+
+## 11. Migration 0006: display names (2026-09-25)
+
+`move.display_name` and `ability.display_name`, as the game prints them. Slugs cannot be
+turned back (15 moves differ: King's Shield, U-turn, Double-Edge), and the transcript's
+hover cards match display names in battle text. The exporter emits them. They were
+filled by re-applying the M-B snapshot: 500/500 moves, 316/316 abilities.
 
 ## 10. Rev 10: items, battles, transcripts (2026-09-25)
 

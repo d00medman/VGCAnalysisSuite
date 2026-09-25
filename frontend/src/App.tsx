@@ -14,6 +14,7 @@ import {
   type Video,
   type VideoDetail,
 } from "./api";
+import { annotate, HoverCard, useLookup, type Hover } from "./Lookup";
 import Pokedex from "./Pokedex";
 
 const clock = (t: number) => {
@@ -318,7 +319,12 @@ function Detail({ id, onChanged, onError }: { id: string; onChanged: () => void;
       )}
 
       {messages.length > 0 && (
-        <Transcript messages={messages} now={showLive ? null : now} onSeek={!showLive && src ? seek : null} />
+        <Transcript
+          messages={messages}
+          at={video.uploaded_at}
+          now={showLive ? null : now}
+          onSeek={!showLive && src ? seek : null}
+        />
       )}
     </section>
   );
@@ -362,14 +368,19 @@ function activeIndex(messages: Message[], t: number | null): number {
 
 function Transcript({
   messages,
+  at,
   now,
   onSeek,
 }: {
   messages: Message[];
+  /** When the video was uploaded (unix ms): picks the regulation names are looked up in. */
+  at: number;
   now: number | null;
   onSeek: ((t: number) => void) | null;
 }) {
   const current = activeIndex(messages, now);
+  const lookup = useLookup(at);
+  const [hover, setHover] = useState<Hover | null>(null);
   const list = useRef<HTMLOListElement>(null);
   useEffect(() => {
     if (current < 0) return;
@@ -377,24 +388,27 @@ function Transcript({
   }, [current]);
 
   return (
-    <ol className="transcript" ref={list}>
-      {messages.map((m, i) => (
-        <li
-          key={i}
-          className={[m.clean ? "" : "unclear", i === current ? "current" : ""].join(" ")}
-          title={`confidence ${m.conf.toFixed(2)}`}
-        >
-          {onSeek ? (
-            <button className="time" onClick={() => onSeek(m.t0)} title="Jump to this moment">
-              {clock(m.t0)}
-            </button>
-          ) : (
-            <time>{clock(m.t0)}</time>
-          )}
-          <span>{m.text}</span>
-          {!m.clean && <em>unclear</em>}
-        </li>
-      ))}
-    </ol>
+    <>
+      <HoverCard hover={hover} lookup={lookup} />
+      <ol className="transcript" ref={list} onScroll={() => setHover(null)}>
+        {messages.map((m, i) => (
+          <li
+            key={i}
+            className={[m.clean ? "" : "unclear", i === current ? "current" : ""].join(" ")}
+            title={`confidence ${m.conf.toFixed(2)}`}
+          >
+            {onSeek ? (
+              <button className="time" onClick={() => onSeek(m.t0)} title="Jump to this moment">
+                {clock(m.t0)}
+              </button>
+            ) : (
+              <time>{clock(m.t0)}</time>
+            )}
+            <span>{annotate(m.text, lookup, setHover)}</span>
+            {!m.clean && <em>unclear</em>}
+          </li>
+        ))}
+      </ol>
+    </>
   );
 }

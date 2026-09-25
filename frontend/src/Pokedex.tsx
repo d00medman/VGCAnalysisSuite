@@ -173,7 +173,7 @@ function Table<T extends { id: number }>({ rows, columns, initial }: { rows: T[]
   );
 }
 
-const Type = ({ name }: { name: string | null }) =>
+export const Type = ({ name }: { name: string | null }) =>
   name ? <span className={`type t-${name}`}>{pretty(name)}</span> : <span className="muted">—</span>;
 
 const Types = ({ types }: { types: string[] | null }) => (
@@ -189,7 +189,7 @@ const matches = (filter: string, ...fields: (string | null | undefined)[]) => {
 
 // ---------------------------------------------------------------- pokemon
 
-const STATS = [
+export const STATS = [
   ["hp", "HP"],
   ["atk", "Atk"],
   ["def", "Def"],
@@ -436,7 +436,7 @@ function MovesTable({ reg, filter, onError }: { reg: number; filter: string; onE
   const rows = useLoad(listMoves, reg, onError);
   const columns: Column<DexMove>[] = useMemo(
     () => [
-      { key: "name", label: "Move", sort: (m) => m.name, render: (m) => <span title={m.name}>{pretty(m.name)}</span> },
+      { key: "name", label: "Move", sort: (m) => m.display_name, render: (m) => <span title={m.name}>{m.display_name}</span> },
       { key: "type", label: "Type", sort: (m) => m.type, render: (m) => <Type name={m.type} /> },
       { key: "class", label: "Class", sort: (m) => m.class, render: (m) => m.class },
       { key: "power", label: "Power", num: true, sort: (m) => m.power, render: (m) => dash(m.power) },
@@ -455,7 +455,7 @@ function MovesTable({ reg, filter, onError }: { reg: number; filter: string; onE
     [],
   );
   if (!rows) return <p className="muted">Loading…</p>;
-  const shown = rows.filter((m) => matches(filter, m.name, pretty(m.name), m.type, m.class));
+  const shown = rows.filter((m) => matches(filter, m.name, m.display_name, m.type, m.class));
   return (
     <>
       <p className="muted">

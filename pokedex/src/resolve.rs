@@ -63,20 +63,22 @@ impl Resolver {
         &mut self,
         c: &mut impl GenericClient,
         name: &str,
+        display_name: Option<&str>,
         description: Option<&str>,
     ) -> Result<i64> {
         if let Some(id) = self.abilities.get(name) {
             return Ok(*id);
         }
-        // Only overwrite a stored description when a new one is actually supplied,
-        // so a bare reference from a learnset cannot blank out real prose.
+        // Only overwrite stored prose when new prose is actually supplied, so a bare
+        // reference from a pokemon record cannot blank it out.
         let id: i64 = c
             .query_one(
-                "INSERT INTO ability (name, description) VALUES ($1, $2)
+                "INSERT INTO ability (name, display_name, description) VALUES ($1, $2, $3)
                  ON CONFLICT (name) DO UPDATE SET
-                   description = COALESCE(excluded.description, ability.description)
+                   display_name = COALESCE(excluded.display_name, ability.display_name),
+                   description  = COALESCE(excluded.description, ability.description)
                  RETURNING id",
-                &[&name, &description],
+                &[&name, &display_name, &description],
             )?
             .get(0);
         self.abilities.insert(name.to_string(), id);

@@ -65,12 +65,13 @@ pub fn apply(client: &mut Client, snap: &Snapshot) -> Result<IngestReport> {
 /// can batch several snapshots into one commit.
 pub fn apply_in(tx: &mut Transaction, snap: &Snapshot) -> Result<IngestReport> {
     let reg = regulation::by_name(tx, &snap.regulation)?;
+    refuse_if_superseded(tx, &reg)?;
     let prev = regulation::previous(tx, reg.id)?;
     let mut r = Resolver::new();
     let mut rep = IngestReport::default();
 
     for a in &snap.abilities {
-        r.ability_id(tx, &a.name, a.description.as_deref())?;
+        r.ability_id(tx, &a.name, a.display_name.as_deref(), a.description.as_deref())?;
     }
     for m in &snap.moves {
         upsert_move_data(tx, &mut r, m, &reg, prev.as_ref(), &mut rep)?;
@@ -109,6 +110,37 @@ pub fn apply_in(tx: &mut Transaction, snap: &Snapshot) -> Result<IngestReport> {
         }
     }
     Ok(rep)
+}
+
+/// Refuse a snapshot for a regulation older than one that already has stored facts.
+///
+/// Set sync closes intervals at the snapshot's regulation. Applied out of order, that
+/// closes windows opened by a LATER regulation at an EARLIER one, leaving windows that end
+/// before they start. Snapshots must be applied oldest first; re-applying the newest one
+/// (or one equally new) is fine.
+fn refuse_if_superseded(tx: &mut Transaction, reg: &Regulation) -> Result<()> {
+    let later: Option<String> = tx
+        .query_opt(
+            "SELECT r.name FROM regulation r
+             WHERE r.effective_from > (SELECT effective_from FROM regulation WHERE id = $1)
+               AND (EXISTS (SELECT 1 FROM pokemon_stats   WHERE regulation_id = r.id)
+                 OR EXISTS (SELECT 1 FROM move_data       WHERE regulation_id = r.id)
+                 OR EXISTS (SELECT 1 FROM pokemon_type    WHERE r.id IN (valid_from_regulation_id, valid_to_regulation_id))
+                 OR EXISTS (SELECT 1 FROM pokemon_ability WHERE r.id IN (valid_from_regulation_id, valid_to_regulation_id))
+                 OR EXISTS (SELECT 1 FROM pokemon_move    WHERE r.id IN (valid_from_regulation_id, valid_to_regulation_id))
+                 OR EXISTS (SELECT 1 FROM item_legality   WHERE r.id IN (valid_from_regulation_id, valid_to_regulation_id)))
+             ORDER BY r.effective_from DESC LIMIT 1",
+            &[&reg.id],
+        )?
+        .map(|row| row.get(0));
+    match later {
+        Some(name) => Err(Error::Validation(format!(
+            "{} already has data, which is newer than {}; snapshots must be applied oldest \
+             first, so this import would corrupt its intervals",
+            name, reg.name
+        ))),
+        None => Ok(()),
+    }
 }
 
 /// Invariants the schema cannot declare.
@@ -278,6 +310,13 @@ fn upsert_move_data(
     rep: &mut IngestReport,
 ) -> Result<()> {
     let move_id = r.move_id(tx, &m.name)?;
+    if let Some(display) = &m.display_name {
+        tx.execute(
+            "UPDATE move SET display_name = $2
+             WHERE id = $1 AND display_name IS DISTINCT FROM $2",
+            &[&move_id, display],
+        )?;
+    }
     let type_id = r.type_id(tx, &m.type_name)?;
     let incoming: MoveTuple = (
         type_id,
@@ -413,7 +452,7 @@ fn sync_abilities(
 ) -> Result<()> {
     let mut want: Vec<(String, i64)> = Vec::new();
     for (slot, name) in ab.occupied() {
-        want.push((slot.to_string(), r.ability_id(tx, name, None)?));
+        want.push((slot.to_string(), r.ability_id(tx, name, None, None)?));
     }
 
     let have: Vec<(String, i64)> = tx

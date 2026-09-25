@@ -20,6 +20,7 @@ pub fn routes() -> Router<Shared> {
         .route("/api/pokedex/pokemon/:id", get(pokemon_detail))
         .route("/api/pokedex/moves", get(moves))
         .route("/api/pokedex/items", get(items))
+        .route("/api/pokedex/abilities", get(abilities))
 }
 
 #[derive(Deserialize)]
@@ -150,7 +151,7 @@ async fn moves(State(s): State<Shared>, Query(q): Query<Reg>) -> ApiResult<Json<
     let sql = "
         WITH r AS (SELECT $REG AS id)
         SELECT coalesce(json_agg(x ORDER BY x.name), '[]') FROM (
-          SELECT m.id, m.name, t.name AS type, d.damage_class AS class, d.power, d.accuracy,
+          SELECT m.id, m.name, coalesce(m.display_name, m.name) AS display_name, t.name AS type, d.damage_class AS class, d.power, d.accuracy,
                  d.pp, d.priority, d.effect_chance, d.secondary_effect,
                  d.sourced_from_regulation AS data_from,
                  (SELECT count(DISTINCT e.pokemon_id) FROM pokemon_move_effective e
@@ -174,4 +175,14 @@ async fn items(State(s): State<Shared>, Query(q): Query<Reg>) -> ApiResult<Json<
           FROM item i, r
         ) x";
     doc(&s, sql, q.regulation).await
+}
+
+/// Every ability; not regulation-scoped, like its description.
+async fn abilities(State(s): State<Shared>) -> ApiResult<Json<Value>> {
+    let sql = "
+        SELECT coalesce(json_agg(json_build_object(
+                 'id', id, 'name', name, 'display_name', coalesce(display_name, name),
+                 'description', description) ORDER BY name), '[]')
+        FROM ability";
+    Ok(Json(s.store.query_json(sql, &[]).await?.unwrap_or(Value::Null)))
 }

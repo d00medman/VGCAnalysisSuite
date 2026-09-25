@@ -126,6 +126,8 @@ export interface DexPokemon extends StatBlock {
 export interface DexMove {
   id: number;
   name: string;
+  /** As the game prints it: "King's Shield". */
+  display_name: string;
   type: string;
   class: "physical" | "special" | "status";
   power: number | null;
@@ -147,6 +149,13 @@ export interface DexItem {
   fling_power: number | null;
   description: string | null;
   legal: boolean;
+}
+
+export interface DexAbility {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string | null;
 }
 
 export interface DexPokemonDetail {
@@ -188,3 +197,4 @@ export const listPokemon = (reg: number | null) => dex<DexPokemon[]>("pokemon", 
 export const getPokemon = (id: number, reg: number | null) => dex<DexPokemonDetail>(`pokemon/${id}`, reg);
 export const listMoves = (reg: number | null) => dex<DexMove[]>("moves", reg);
 export const listItems = (reg: number | null) => dex<DexItem[]>("items", reg);
+export const listAbilities = () => fetch("/api/pokedex/abilities").then((r) => json<DexAbility[]>(r));
