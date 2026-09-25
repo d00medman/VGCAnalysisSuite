@@ -1,0 +1,57 @@
+# Web front end, transcription API, and Postgres (pokedex, battles, transcripts).
+#   docker compose up --build      then open http://localhost:8080
+#   docker compose run --rm pokedex status     pokedex CLI against the postgres service
+services:
+  web:
+    build: ./frontend
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - api
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      DATABASE_URL: postgres://pokedex:${POSTGRES_PASSWORD:-pokedex}@postgres:5432/pokedex
+    volumes:
+      # Uploaded recordings are kept so they can be transcribed again later.
+      - videos:/data/videos
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: pokedex
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pokedex}
+      POSTGRES_DB: pokedex
+    # Loopback only: lets `cargo test` and `psql` on the host reach it without
+    # exposing the database to the network.
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pokedex -d pokedex"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  # One-shot CLI, not a daemon: the `tools` profile keeps `up` from starting it.
+  #   docker compose run --rm -T pokedex import < pokedex/ingest/out/snapshot.regulation-m-a.json
+  pokedex:
+    build: ./pokedex
+    profiles: ["tools"]
+    environment:
+      DATABASE_URL: postgres://pokedex:${POSTGRES_PASSWORD:-pokedex}@postgres:5432/pokedex
+      POKEDEX_AUTO_MIGRATE: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  videos:
+  postgres-data:
