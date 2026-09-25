@@ -264,7 +264,6 @@ header + .error {
 }
 
 .transcript em {
-  margin-left: auto;
   font-size: 12px;
   font-style: normal;
   color: var(--muted);
@@ -372,6 +371,60 @@ header + .error {
 
 .transcript li.current {
   background: var(--selected);
+}
+
+.transcript li > span {
+  flex: 1;
+}
+
+/* Turns: a heading row opens each one, and the line that closes it gets a heavier rule. */
+.transcript li.turn-head {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 8px 14px 4px;
+}
+
+.transcript li.ends-turn {
+  border-bottom: 2px solid var(--accent);
+}
+
+.transcript li.ends-turn:last-child {
+  border-bottom: 0;
+}
+
+.transcript button.turn-mark {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 8px;
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.transcript li:hover button.turn-mark,
+.transcript button.turn-mark:focus-visible,
+.transcript button.turn-mark.on {
+  visibility: visible;
+}
+
+.transcript button.turn-mark:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.transcript button.turn-mark.on {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* ---------------------------------------------------------------- header tabs */

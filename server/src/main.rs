@@ -24,7 +24,7 @@ use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::extract::Request;
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -131,6 +131,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/videos/:id/file", get(serve_original))
         .route("/api/videos/:id/preview", get(serve_preview))
         .route("/api/videos/:id/live.jpg", get(serve_snapshot))
+        .route("/api/videos/:id/lines/:line/turn-end", put(set_turn_end))
         .merge(dex::routes())
         .with_state(state);
 
@@ -294,6 +295,25 @@ async fn get_video(State(s): State<Shared>, Path(id): Path<String>) -> ApiResult
         _ => serde_json::Value::Array(vec![]),
     };
     Ok(Json(VideoDetail { video, live, messages }))
+}
+
+#[derive(Deserialize)]
+struct TurnEnd {
+    ends_turn: bool,
+}
+
+/// `PUT /api/videos/:id/lines/:line/turn-end` with `{"ends_turn": bool}`: mark or unmark a
+/// transcript line as the last line of its turn.
+async fn set_turn_end(
+    State(s): State<Shared>,
+    Path((id, line)): Path<(String, i64)>,
+    Json(body): Json<TurnEnd>,
+) -> ApiResult<StatusCode> {
+    if s.store.set_turn_end(&id, line, body.ends_turn).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError(StatusCode::NOT_FOUND, format!("no line {line} in video {id}")))
+    }
 }
 
 async fn start_transcription(

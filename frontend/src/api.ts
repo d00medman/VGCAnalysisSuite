@@ -18,12 +18,16 @@ export interface Video {
 }
 
 export interface Message {
+  /** The saved line's id; absent on live messages from a running transcription. */
+  id?: number;
   t0: number;
   t1: number;
   text: string;
   conf: number;
   /** False when the reader could not identify every character; `text` then contains `?`. */
   clean: boolean;
+  /** The line is the last of its turn. Saved transcripts only. */
+  ends_turn?: boolean;
 }
 
 export interface Live {
@@ -66,6 +70,16 @@ export const getVideo = (id: string) => fetch(`/api/videos/${id}`).then((r) => j
 
 export const transcribe = (id: string) =>
   fetch(`/api/videos/${id}/transcribe`, { method: "POST" }).then((r) => json<Video>(r));
+
+/** Mark or unmark a saved transcript line as the last line of its turn. */
+export async function setTurnEnd(id: string, line: number, endsTurn: boolean): Promise<void> {
+  const res = await fetch(`/api/videos/${id}/lines/${line}/turn-end`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ends_turn: endsTurn }),
+  });
+  if (!res.ok) await json(res);
+}
 
 /** Upload the raw file. XHR rather than fetch, because fetch cannot report upload progress. */
 export function uploadVideo(file: File, onProgress: (fraction: number) => void): Promise<Video> {

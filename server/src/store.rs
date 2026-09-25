@@ -2,8 +2,9 @@
 //!
 //! Schema: `pokedex/migrations/0005_battles.sql`. One `video` per upload, one `battle`
 //! per video, one `transcript` row per transcription run (re-runs add rows; the newest
-//! is current), and one `transcript_line` row per message. The API still speaks in
-//! videos: a video's status is its newest run's status.
+//! is current), and one `transcript_line` row per message. `turn_end` marks the line
+//! each turn ends on (`0007_turns.sql`). The API still speaks in videos: a video's status
+//! is its newest run's status.
 
 use analyzer::episode::Message;
 use anyhow::{Context, Result};
@@ -248,23 +249,55 @@ impl Store {
         .await?)
     }
 
-    /// The newest finished transcript's lines, in order, shaped like `Message`.
+    /// The newest finished transcript's lines, in order, shaped like `Message` plus each
+    /// line's `id` and whether a turn ends on it.
     pub async fn transcript(&self, video_id: &str) -> Result<Option<serde_json::Value>> {
         let c = self.client().await?;
         let row = c
             .query_opt(
                 "SELECT coalesce(json_agg(json_build_object(
-                          't0', l.t0, 't1', l.t1, 'text', l.text,
-                          'conf', l.conf, 'clean', l.clean) ORDER BY l.seq)
+                          'id', l.id, 't0', l.t0, 't1', l.t1, 'text', l.text,
+                          'conf', l.conf, 'clean', l.clean,
+                          'ends_turn', te.line_id IS NOT NULL) ORDER BY l.seq)
                           FILTER (WHERE l.id IS NOT NULL), '[]')
                  FROM (SELECT t.id FROM transcript t JOIN battle b ON b.id = t.battle_id
                        WHERE b.video_id = $1 AND t.status = 'done'
                        ORDER BY t.id DESC LIMIT 1) latest
                  LEFT JOIN transcript_line l ON l.transcript_id = latest.id
+                 LEFT JOIN turn_end te ON te.line_id = l.id
                  GROUP BY latest.id",
                 &[&video_id],
             )
             .await?;
         Ok(row.map(|r| r.get(0)))
+    }
+
+    /// Mark or unmark `line_id` as the last line of its turn. The line must belong to one
+    /// of `video_id`'s transcripts; returns false if it does not.
+    pub async fn set_turn_end(&self, video_id: &str, line_id: i64, ends_turn: bool) -> Result<bool> {
+        let c = self.client().await?;
+        let owned = c
+            .query_opt(
+                "SELECT 1 FROM transcript_line l
+                 JOIN transcript t ON t.id = l.transcript_id
+                 JOIN battle b ON b.id = t.battle_id
+                 WHERE l.id = $1 AND b.video_id = $2",
+                &[&line_id, &video_id],
+            )
+            .await?
+            .is_some();
+        if !owned {
+            return Ok(false);
+        }
+        if ends_turn {
+            c.execute(
+                "INSERT INTO turn_end (line_id) VALUES ($1) ON CONFLICT DO NOTHING",
+                &[&line_id],
+            )
+            .await?;
+        } else {
+            c.execute("DELETE FROM turn_end WHERE line_id = $1", &[&line_id]).await?;
+        }
+        Ok(true)
     }
 }

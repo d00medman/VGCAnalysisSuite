@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   canPlayHevc,
   getVideo,
@@ -7,6 +7,7 @@ import {
   MESSAGE_ROI,
   originalUrl,
   previewUrl,
+  setTurnEnd,
   snapshotUrl,
   transcribe,
   uploadVideo,
@@ -247,6 +248,19 @@ function Detail({ id, onChanged, onError }: { id: string; onChanged: () => void;
   const src = video.has_preview ? previewUrl(id) : hevc ? originalUrl(id) : null;
   const showLive = video.status === "transcribing" && (follow || !src);
 
+  // Optimistic: flip the mark locally, and put it back if the server refuses.
+  const toggleTurn = async (line: number, endsTurn: boolean) => {
+    const flip = (on: boolean) =>
+      setDetail((d) => d && { ...d, messages: d.messages.map((m) => (m.id === line ? { ...m, ends_turn: on } : m)) });
+    flip(endsTurn);
+    try {
+      await setTurnEnd(id, line, endsTurn);
+    } catch (e) {
+      flip(!endsTurn);
+      onError(String((e as Error).message));
+    }
+  };
+
   const seek = (t: number) => {
     const v = player.current;
     if (!v) return;
@@ -324,6 +338,7 @@ function Detail({ id, onChanged, onError }: { id: string; onChanged: () => void;
           at={video.uploaded_at}
           now={showLive ? null : now}
           onSeek={!showLive && src ? seek : null}
+          onToggleTurn={live ? null : toggleTurn}
         />
       )}
     </section>
@@ -366,17 +381,26 @@ function activeIndex(messages: Message[], t: number | null): number {
   return i >= 0 && t <= messages[i].t1 + 1 ? i : -1;
 }
 
+/** Turn number of each line: turn N runs through the Nth line marked `ends_turn`. */
+function turnNumbers(messages: Message[]): number[] {
+  let turn = 1;
+  return messages.map((m) => (m.ends_turn ? turn++ : turn));
+}
+
 function Transcript({
   messages,
   at,
   now,
   onSeek,
+  onToggleTurn,
 }: {
   messages: Message[];
   /** When the video was uploaded (unix ms): picks the regulation names are looked up in. */
   at: number;
   now: number | null;
   onSeek: ((t: number) => void) | null;
+  /** Null while transcribing: live lines are not saved yet, so they cannot be marked. */
+  onToggleTurn: ((line: number, endsTurn: boolean) => void) | null;
 }) {
   const current = activeIndex(messages, now);
   const lookup = useLookup(at);
@@ -384,30 +408,52 @@ function Transcript({
   const list = useRef<HTMLOListElement>(null);
   useEffect(() => {
     if (current < 0) return;
-    list.current?.children[current]?.scrollIntoView({ block: "nearest" });
+    list.current?.querySelector("li.current")?.scrollIntoView({ block: "nearest" });
   }, [current]);
+
+  const turns = turnNumbers(messages);
+  // Until the first mark there is only one turn, and a "Turn 1" heading would say nothing.
+  const marked = messages.some((m) => m.ends_turn);
 
   return (
     <>
       <HoverCard hover={hover} lookup={lookup} />
       <ol className="transcript" ref={list} onScroll={() => setHover(null)}>
-        {messages.map((m, i) => (
-          <li
-            key={i}
-            className={[m.clean ? "" : "unclear", i === current ? "current" : ""].join(" ")}
-            title={`confidence ${m.conf.toFixed(2)}`}
-          >
-            {onSeek ? (
-              <button className="time" onClick={() => onSeek(m.t0)} title="Jump to this moment">
-                {clock(m.t0)}
-              </button>
-            ) : (
-              <time>{clock(m.t0)}</time>
-            )}
-            <span>{annotate(m.text, lookup, setHover)}</span>
-            {!m.clean && <em>unclear</em>}
-          </li>
-        ))}
+        {messages.map((m, i) => {
+          const line = m.id;
+          return (
+            <Fragment key={i}>
+              {marked && turns[i] !== turns[i - 1] && <li className="turn-head">Turn {turns[i]}</li>}
+              <li
+                className={[m.clean ? "" : "unclear", i === current ? "current" : "", m.ends_turn ? "ends-turn" : ""].join(
+                  " ",
+                )}
+                title={`confidence ${m.conf.toFixed(2)}`}
+              >
+                {onSeek ? (
+                  <button className="time" onClick={() => onSeek(m.t0)} title="Jump to this moment">
+                    {clock(m.t0)}
+                  </button>
+                ) : (
+                  <time>{clock(m.t0)}</time>
+                )}
+                <span>{annotate(m.text, lookup, setHover)}</span>
+                {!m.clean && <em>unclear</em>}
+                {onToggleTurn && line !== undefined && (
+                  <button
+                    className={`turn-mark${m.ends_turn ? " on" : ""}`}
+                    onClick={() => onToggleTurn(line, !m.ends_turn)}
+                    title={
+                      m.ends_turn ? `Turn ${turns[i]} ends here — click to undo` : "Mark this as the last line of its turn"
+                    }
+                  >
+                    {m.ends_turn ? `end of turn ${turns[i]}` : "end turn"}
+                  </button>
+                )}
+              </li>
+            </Fragment>
+          );
+        })}
       </ol>
     </>
   );
