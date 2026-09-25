@@ -1,4 +1,5 @@
 use analyzer::atlas::{side_bearing, Atlas};
+use analyzer::lexicon::Lexicon;
 use analyzer::decode::{ffmpeg_path, Decoder};
 use analyzer::transcribe::{transcribe, Status};
 use analyzer::text::{self, Image, Row, MESSAGE_ROI};
@@ -66,6 +67,13 @@ enum Command {
     Atlas { labels: PathBuf },
     /// Segment and read a single ROI crop (debugging).
     Read { png: PathBuf },
+    /// Build `lexicon.txt` beside the atlas: known words for repairing `I`/`l` confusions,
+    /// from the labels TSV, pokedex snapshots (`pokedex/ingest/out/snapshot.*.json`) and the
+    /// built-in battle vocabulary.
+    Lexicon {
+        labels: PathBuf,
+        snapshots: Vec<PathBuf>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -82,6 +90,7 @@ fn main() -> Result<()> {
         }
         Command::Atlas { labels } => build_atlas(&labels, &cli.atlas),
         Command::Read { png } => read_one(&cli.atlas, &png),
+        Command::Lexicon { labels, snapshots } => build_lexicon(&labels, &snapshots, &cli.atlas),
     }
 }
 
@@ -280,6 +289,38 @@ fn build_atlas(labels: &Path, atlas_path: &Path) -> Result<()> {
 
 fn nth_nonspace_index(s: &str, n: usize) -> usize {
     s.char_indices().filter(|(_, c)| *c != ' ').nth(n).map(|(i, _)| i).unwrap_or(s.len())
+}
+
+fn build_lexicon(labels: &Path, snapshots: &[PathBuf], atlas_path: &Path) -> Result<()> {
+    let tsv = std::fs::read_to_string(labels).with_context(|| format!("reading {}", labels.display()))?;
+    let mut texts: Vec<String> = tsv
+        .lines()
+        .filter(|l| !l.starts_with('#'))
+        .filter_map(|l| l.split_once('\t').map(|(_, t)| t.to_string()))
+        .collect();
+    for path in snapshots {
+        let src = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let snap: serde_json::Value = serde_json::from_str(&src).with_context(|| format!("parsing {}", path.display()))?;
+        for key in ["pokemon", "moves", "abilities"] {
+            for name in snap[key].as_array().into_iter().flatten().filter_map(|e| e["name"].as_str()) {
+                // Moves and abilities are slugs (`leech-seed`); either way words split on `-`,
+                // and each is capitalised as game text shows it.
+                texts.push(name.split('-').map(capitalize).collect::<Vec<_>>().join(" "));
+            }
+        }
+    }
+    let lexicon = Lexicon::from_words(
+        analyzer::lexicon::BATTLE_WORDS.iter().copied().chain(texts.iter().map(String::as_str)),
+    );
+    let out = atlas_path.with_file_name("lexicon.txt");
+    lexicon.save(&out)?;
+    eprintln!("lexicon: {} words → {}", lexicon.len(), out.display());
+    Ok(())
+}
+
+fn capitalize(w: &str) -> String {
+    let mut c = w.chars();
+    c.next().map_or_else(String::new, |f| f.to_uppercase().chain(c).collect())
 }
 
 fn read_one(atlas_path: &Path, png: &Path) -> Result<()> {

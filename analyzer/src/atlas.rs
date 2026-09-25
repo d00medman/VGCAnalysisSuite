@@ -17,6 +17,7 @@
 //! `harvest --unknown-only` collects exactly those crops for labelling. See the
 //! TODO(cjk) note in `text` for the multi-piece character gap.
 
+use crate::lexicon::Lexicon;
 use crate::text::{Glyph, Row};
 use anyhow::{bail, Context, Result};
 use std::collections::HashMap;
@@ -83,6 +84,8 @@ pub struct Atlas {
     /// A horizontal gap of at least this many pixels between glyphs is a space.
     pub space_gap: i32,
     pub templates: Vec<Template>,
+    /// Known words, for repairing `I`/`l` confusions; `lexicon.txt` beside the atlas file.
+    pub lexicon: Lexicon,
 }
 
 /// Extra side padding a glyph carries beyond its ink. Digits are tabular (fixed advance),
@@ -246,6 +249,7 @@ impl Atlas {
                 prev_label = label;
             }
         }
+        let text = self.lexicon.fix(&text);
         Reading { text, conf, unknown }
     }
 
@@ -304,6 +308,7 @@ impl Atlas {
                 bail!("unrecognised atlas line {}: {line}", n + 1);
             }
         }
+        atlas.lexicon = Lexicon::load(&path.with_file_name("lexicon.txt"))?;
         Ok(atlas)
     }
 

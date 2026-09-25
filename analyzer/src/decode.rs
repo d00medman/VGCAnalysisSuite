@@ -51,6 +51,23 @@ pub fn ffmpeg_path(explicit: Option<&Path>) -> PathBuf {
     }
 }
 
+/// Optional side outputs written by the same ffmpeg process that feeds the reader, so the
+/// source (HEVC, the expensive part) is decoded once for all of them.
+#[derive(Clone, Debug, Default)]
+pub struct Extras {
+    /// Browser-playable H.264 copy of the whole frame, with audio, timestamps unchanged so
+    /// transcript times map straight onto it. Valid only once ffmpeg exits successfully.
+    pub preview: Option<PathBuf>,
+    /// A small JPEG of the current frame, rewritten (atomically) twice a second.
+    pub snapshot: Option<PathBuf>,
+}
+
+impl Extras {
+    fn any(&self) -> bool {
+        self.preview.is_some() || self.snapshot.is_some()
+    }
+}
+
 impl Decoder {
     /// Decode `video`, cropped to `rect`, optionally limited to `[start, start+duration)`.
     pub fn open(
@@ -59,6 +76,18 @@ impl Decoder {
         rect: Rect,
         start: Option<f64>,
         duration: Option<f64>,
+    ) -> Result<Self> {
+        Self::open_with(ffmpeg, video, rect, start, duration, &Extras::default())
+    }
+
+    /// As `open`, also writing the side outputs in `extras`.
+    pub fn open_with(
+        ffmpeg: &Path,
+        video: &Path,
+        rect: Rect,
+        start: Option<f64>,
+        duration: Option<f64>,
+        extras: &Extras,
     ) -> Result<Self> {
         let mut cmd = Command::new(ffmpeg);
         cmd.args(["-hide_banner", "-nostats", "-loglevel", "info"]);
@@ -71,22 +100,51 @@ impl Decoder {
             cmd.args(["-t", &format!("{d}")]);
         }
         cmd.arg("-i").arg(video);
+        // showinfo is only here for pts_time; its per-frame checksums are wasted work.
+        let roi = format!("crop={}:{}:{}:{},showinfo=checksum=0", rect.w, rect.h, rect.x, rect.y);
+        if extras.any() {
+            let mut graph = format!(
+                "[0:v:0]split={}[roi_in]{}{};[roi_in]{roi}[roi]",
+                1 + extras.preview.is_some() as usize + extras.snapshot.is_some() as usize,
+                if extras.preview.is_some() { "[pv_in]" } else { "" },
+                if extras.snapshot.is_some() { "[sn_in]" } else { "" },
+            );
+            if extras.preview.is_some() {
+                graph += ";[pv_in]scale=1280:-2,format=yuv420p[pv]";
+            }
+            if extras.snapshot.is_some() {
+                graph += ";[sn_in]fps=2,scale=640:-2[sn]";
+            }
+            cmd.args(["-filter_complex", &graph, "-map", "[roi]"]);
+        } else {
+            cmd.args(["-map", "0:v:0", "-an", "-vf", &roi]);
+        }
         cmd.args([
-            "-map",
-            "0:v:0",
-            "-an",
             // Passthrough: emit exactly the decoded frames, never duplicate or drop to hit a rate.
             "-fps_mode",
             "passthrough",
-            "-vf",
-            // showinfo is only here for pts_time; its per-frame checksums are wasted work.
-            &format!("crop={}:{}:{}:{},showinfo=checksum=0", rect.w, rect.h, rect.x, rect.y),
             "-f",
             "rawvideo",
             "-pix_fmt",
             "rgb24",
             "-",
         ]);
+        if let Some(p) = &extras.preview {
+            cmd.args([
+                "-map", "[pv]", "-map", "0:a:0?",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "26",
+                "-fps_mode", "passthrough",
+                "-c:a", "aac", "-b:a", "96k",
+                // Index at the front, so a browser can start playing before the whole file loads.
+                "-movflags", "+faststart",
+                "-f", "mp4", "-y",
+            ]);
+            cmd.arg(p);
+        }
+        if let Some(p) = &extras.snapshot {
+            cmd.args(["-map", "[sn]", "-f", "image2", "-update", "1", "-atomic_writing", "1", "-q:v", "5", "-y"]);
+            cmd.arg(p);
+        }
         let mut child = cmd
             .stdin(Stdio::null())
             .stdout(Stdio::piped())

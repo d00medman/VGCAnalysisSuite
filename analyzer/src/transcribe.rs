@@ -6,7 +6,7 @@
 //! reading the frames one at a time.
 
 use crate::atlas::{Atlas, GlyphCache, Reading};
-use crate::decode::{Decoder, Frame};
+use crate::decode::{Decoder, Extras, Frame};
 use crate::episode::{Message, Tracker};
 use crate::text::{self, Image, MESSAGE_ROI};
 use anyhow::Result;
@@ -79,10 +79,26 @@ pub fn transcribe(
     video: &Path,
     start: Option<f64>,
     duration: Option<f64>,
+    on_frame: impl FnMut(&Status),
+    on_message: impl FnMut(&Message),
+) -> Result<Vec<Message>> {
+    transcribe_with(ffmpeg, atlas, video, start, duration, &Extras::default(), on_frame, on_message)
+}
+
+/// As `transcribe`, also writing the decoder side outputs in `extras` (a playable preview,
+/// a live snapshot) from the same decode.
+#[allow(clippy::too_many_arguments)]
+pub fn transcribe_with(
+    ffmpeg: &Path,
+    atlas: &Atlas,
+    video: &Path,
+    start: Option<f64>,
+    duration: Option<f64>,
+    extras: &Extras,
     mut on_frame: impl FnMut(&Status),
     mut on_message: impl FnMut(&Message),
 ) -> Result<Vec<Message>> {
-    let dec = Decoder::open(ffmpeg, video, MESSAGE_ROI, start, duration)?;
+    let dec = Decoder::open_with(ffmpeg, video, MESSAGE_ROI, start, duration, extras)?;
     // The file duration arrives on ffmpeg's stderr as the input opens.
     let file_duration = dec.duration_cell();
     let workers = worker_count();
