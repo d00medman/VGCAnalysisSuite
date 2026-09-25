@@ -55,6 +55,10 @@ Champions-specific text (Piercing Drill's 1/4 damage) survives.
 
 - `DECISION:` the exporter falls back to `loadTextData()` when the object has no text.
 
+Master's text also differs in wording from 0.11.11's for 55 abilities and 29 items: `1.5x`
+→ `1.5×`, "summons Sunny Day" → "summons Sun", and Slowbronite loses "(not Galarian
+Slowbro)". Upstream edits, not regressions; the M-B refresh carries them.
+
 ### 4. The curly apostrophe is not a slug bug (yet)
 
 `Farfetch’d` and `Sirfetch’d` use U+2019. `slug()` did not strip it, but pokemon names are

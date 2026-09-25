@@ -4,9 +4,11 @@
 /**
  * Showdown -> pokedex snapshot exporter.
  *
- *   npm install                       # pins pokemon-showdown 0.11.11
- *   node showdown-snapshot.js champions        > writes snapshot.regulation-m-b.json
- *   node showdown-snapshot.js championsregma   > writes snapshot.regulation-m-a.json
+ *   ./export.sh <showdown-sha>        # all three regulations -> ../snapshots/
+ *
+ *   node showdown-snapshot.js m-a [outDir]                    # npm pokemon-showdown 0.11.11
+ *   SHOWDOWN_PATH=<built checkout> SHOWDOWN_SHA=<sha> \
+ *     node showdown-snapshot.js m-b|m-c [outDir]              # Showdown master, Node >= 22
  *
  * WHY THIS IS JAVASCRIPT
  * ----------------------
@@ -39,15 +41,31 @@
 
 const fs = require('fs');
 const path = require('path');
-const { Dex } = require('pokemon-showdown');
+// npm 0.11.11 by default; a built Showdown checkout when SHOWDOWN_PATH is set.
+const SHOWDOWN = process.env.SHOWDOWN_PATH || 'pokemon-showdown';
+const { Dex } = require(SHOWDOWN);
 
-// Each Showdown mod is a frozen snapshot of one regulation. `champions` tracks the
-// current one; siblings hold the previous ones. Loading both is how the temporal
-// schema earns its keep.
-const REGULATION_OF_MOD = {
-  champions: 'Regulation M-B',
-  championsregma: 'Regulation M-A',
+/**
+ * Where each regulation comes from. Each Showdown mod is a frozen snapshot of one
+ * regulation, but the names move: `champions` tracks the current regulation, so it
+ * was M-B in npm 0.11.11 and is M-C on master, and master deleted `championsregma`.
+ * A mod name alone therefore does not identify a regulation; the source does too.
+ * See devlog/DataSourcingResearchResults.md, rev 3.
+ */
+const EXPORTS = {
+  'm-a': { regulation: 'Regulation M-A', source: 'npm', mod: 'championsregma' },
+  'm-b': {
+    regulation: 'Regulation M-B',
+    source: 'git',
+    mod: 'championsregmb',
+    // championsregmb inherits move legality from `champions`, so M-C's signature moves
+    // (Pyro Ball, Snipe Shot, ...) show up as legal with no M-B species to learn them.
+    learnedMovesOnly: true,
+  },
+  'm-c': { regulation: 'Regulation M-C', source: 'git', mod: 'champions' },
 };
+
+const SHOWDOWN_REPO = 'https://github.com/smogon/pokemon-showdown';
 
 // Formes whose prefix marks a regional variant. Everything else with a mega stone is
 // 'mega', and the long tail (Rotom appliances, Vivillon patterns, Alcremie creams,
@@ -68,7 +86,7 @@ const REGIONAL_PREFIXES = ['Alola', 'Galar', 'Hisui', 'Paldea'];
 function slug(name) {
   return name
     .toLowerCase()
-    .replace(/['".]/g, '')
+    .replace(/['’".]/g, '') // ’: Farfetch’d, Sirfetch’d
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }
@@ -245,18 +263,35 @@ function firstSecondaryChance(move) {
  * why the snapshot carries the complete list and ingest stores it as intervals.
  * Mega stones are detected through `megaStone`, the same test `variantOf` uses.
  */
-function itemRecord(item) {
+function itemRecord(item, text) {
   return {
     name: slug(item.name),
     display_name: item.name,
     category: item.megaStone ? 'mega-stone' : item.isBerry ? 'berry' : 'other',
     fling_power: item.fling ? item.fling.basePower : null,
-    description: item.shortDesc || item.desc || null,
+    description: describe(item, text.Items) || null,
   };
 }
 
-function abilityRecord(ability) {
-  return { name: slug(ability.name), display_name: ability.name, description: ability.shortDesc || null };
+function abilityRecord(ability, text) {
+  return { name: slug(ability.name), display_name: ability.name, description: describe(ability, text.Abilities) };
+}
+
+/**
+ * Short description, or null. npm 0.11.11 puts text on the data object; master moved it
+ * to `data/text/` behind `dex.loadTextData()`, which resolves per mod, so Champions-only
+ * text (Piercing Drill's 1/4 damage) survives. Reading only the object would null out
+ * every description on master.
+ */
+function describe(entry, table) {
+  if (entry.shortDesc) return entry.shortDesc;
+  const t = table && table[entry.id];
+  return (t && (t.shortDesc || t.desc)) || null;
+}
+
+/** Text tables for `describe`, or empty ones where the dex has no `loadTextData`. */
+function textOf(dex) {
+  return typeof dex.loadTextData === 'function' ? dex.loadTextData() : { Abilities: {}, Items: {} };
 }
 
 // ---------------------------------------------------------------- type chart check
@@ -287,7 +322,7 @@ function typeChartRows(dex) {
 
 // ---------------------------------------------------------------- main
 
-function buildSnapshot(dex, regulation, warnings) {
+function buildSnapshot(dex, spec, source, warnings) {
   const species = legalSpecies(dex);
   const legalIds = new Set(species.map((s) => s.id));
 
@@ -311,35 +346,66 @@ function buildSnapshot(dex, regulation, warnings) {
     if (s.forme) pokemon.push(speciesRecord(dex, s, warnings));
   }
 
+  let moves = legalMoves(dex);
+  if (spec.learnedMovesOnly) {
+    const learned = new Set(pokemon.flatMap((p) => (p.learnset || []).map((e) => e.move)));
+    const dropped = moves.filter((m) => !learned.has(slug(m.name)));
+    moves = moves.filter((m) => learned.has(slug(m.name)));
+    warnings.push(`dropped ${dropped.length} legal moves no species learns: ${dropped.map((m) => m.id).join(', ')}`);
+  }
+
+  const text = textOf(dex);
   return {
-    regulation,
-    abilities: dex.abilities.all().filter((a) => !a.isNonstandard).map(abilityRecord),
-    moves: legalMoves(dex).map(moveRecord),
+    regulation: spec.regulation,
+    // Not read by ingest (serde ignores unknown fields); here so a committed snapshot
+    // says what produced it.
+    source,
+    abilities: dex.abilities.all().filter((a) => !a.isNonstandard).map((a) => abilityRecord(a, text)),
+    moves: moves.map(moveRecord),
     pokemon,
-    items: dex.items.all().filter((i) => !i.isNonstandard).map(itemRecord),
+    items: dex.items.all().filter((i) => !i.isNonstandard).map((i) => itemRecord(i, text)),
   };
 }
 
+/**
+ * Provenance, and a guard against exporting a regulation from the wrong Showdown: the
+ * same mod name means different regulations in npm 0.11.11 and on master.
+ */
+function sourceOf(spec) {
+  if (spec.source === 'npm') {
+    if (process.env.SHOWDOWN_PATH) fail(`${spec.regulation} comes from npm; unset SHOWDOWN_PATH`);
+    return { npm: 'pokemon-showdown', version: require('pokemon-showdown/package.json').version, mod: spec.mod };
+  }
+  const sha = process.env.SHOWDOWN_SHA;
+  if (!process.env.SHOWDOWN_PATH || !/^[0-9a-f]{40}$/.test(sha || '')) {
+    fail(`${spec.regulation} comes from Showdown master; set SHOWDOWN_PATH and a full SHOWDOWN_SHA (see export.sh)`);
+  }
+  return { repo: SHOWDOWN_REPO, sha, mod: spec.mod };
+}
+
+function fail(message) {
+  console.error(message);
+  process.exit(1);
+}
+
 function main() {
-  const mod = process.argv[2] || 'champions';
+  const key = process.argv[2];
   const outDir = process.argv[3] || path.join(__dirname, 'out');
 
-  const regulation = REGULATION_OF_MOD[mod];
-  if (!regulation) {
-    console.error(`unknown mod '${mod}'. known: ${Object.keys(REGULATION_OF_MOD).join(', ')}`);
-    console.error('add it to REGULATION_OF_MOD once the regulation it maps to is decided.');
-    process.exit(1);
-  }
+  const spec = EXPORTS[key];
+  if (!spec) fail(`usage: showdown-snapshot.js <${Object.keys(EXPORTS).join('|')}> [outDir]`);
+  const source = sourceOf(spec);
+  if (!Dex.dexes[spec.mod]) fail(`${SHOWDOWN} has no mod '${spec.mod}'`);
 
-  const dex = Dex.mod(mod);
+  const dex = Dex.mod(spec.mod);
   const warnings = [];
-  const snapshot = buildSnapshot(dex, regulation, warnings);
+  const snapshot = buildSnapshot(dex, spec, source, warnings);
 
   fs.mkdirSync(outDir, { recursive: true });
-  write(outDir, `snapshot.${slug(regulation)}.json`, snapshot);
+  write(outDir, `snapshot.${slug(spec.regulation)}.json`, snapshot);
   write(outDir, 'typechart-check.json', typeChartRows(dex));
 
-  console.log(`\n${mod} -> ${regulation}`);
+  console.log(`\n${spec.mod} -> ${spec.regulation}  (${source.sha || source.version})`);
   console.log(`  pokemon   ${snapshot.pokemon.length}`);
   console.log(`  moves     ${snapshot.moves.length}`);
   console.log(`  abilities ${snapshot.abilities.length}`);

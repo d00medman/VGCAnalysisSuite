@@ -51,3 +51,6 @@ Thumbs.db
 # --- Ingest exporter output (derived; regenerate with pokedex/ingest) ---
 pokedex/ingest/out/
 *.tsbuildinfo
+
+# Showdown checkouts built by pokedex/ingest/export.sh
+pokedex/ingest/.showdown/
