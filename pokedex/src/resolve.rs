@@ -5,7 +5,7 @@
 //! because a 1000-pokemon snapshot resolves the same 18 type names thousands of times.
 
 use crate::error::{Error, Result};
-use rusqlite::{Connection, OptionalExtension};
+use postgres::GenericClient;
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -23,14 +23,14 @@ impl Resolver {
     }
 
     /// Fixed reference data: unknown names are an error, never an insert.
-    pub fn type_id(&mut self, conn: &Connection, name: &str) -> Result<i64> {
-        Self::lookup(&mut self.types, conn, "type", "name", name, "type")
+    pub fn type_id(&mut self, c: &mut impl GenericClient, name: &str) -> Result<i64> {
+        Self::lookup(&mut self.types, c, "type", "name", name, "type")
     }
 
-    pub fn variant_kind_id(&mut self, conn: &Connection, name: &str) -> Result<i64> {
+    pub fn variant_kind_id(&mut self, c: &mut impl GenericClient, name: &str) -> Result<i64> {
         Self::lookup(
             &mut self.variant_kinds,
-            conn,
+            c,
             "variant_kind",
             "name",
             name,
@@ -40,7 +40,7 @@ impl Resolver {
 
     fn lookup(
         cache: &mut HashMap<String, i64>,
-        conn: &Connection,
+        c: &mut impl GenericClient,
         table: &str,
         col: &str,
         name: &str,
@@ -50,8 +50,8 @@ impl Resolver {
             return Ok(*id);
         }
         // `table`/`col` are compile-time literals from this module, never input.
-        let sql = format!("SELECT id FROM {table} WHERE {col} = ?1");
-        let id: Option<i64> = conn.query_row(&sql, [name], |r| r.get(0)).optional()?;
+        let sql = format!("SELECT id FROM {table} WHERE {col} = $1");
+        let id: Option<i64> = c.query_opt(&sql, &[&name])?.map(|r| r.get(0));
         let id = id.ok_or_else(|| Error::UnknownName { kind, name: name.to_string() })?;
         cache.insert(name.to_string(), id);
         Ok(id)
@@ -61,7 +61,7 @@ impl Resolver {
     /// rather than being seeded reference data.
     pub fn ability_id(
         &mut self,
-        conn: &Connection,
+        c: &mut impl GenericClient,
         name: &str,
         description: Option<&str>,
     ) -> Result<i64> {
@@ -70,26 +70,28 @@ impl Resolver {
         }
         // Only overwrite a stored description when a new one is actually supplied,
         // so a bare reference from a learnset cannot blank out real prose.
-        conn.execute(
-            "INSERT INTO ability (name, description) VALUES (?1, ?2)
-             ON CONFLICT(name) DO UPDATE SET
-               description = COALESCE(excluded.description, ability.description)",
-            rusqlite::params![name, description],
-        )?;
-        let id: i64 = conn.query_row("SELECT id FROM ability WHERE name = ?1", [name], |r| r.get(0))?;
+        let id: i64 = c
+            .query_one(
+                "INSERT INTO ability (name, description) VALUES ($1, $2)
+                 ON CONFLICT (name) DO UPDATE SET
+                   description = COALESCE(excluded.description, ability.description)
+                 RETURNING id",
+                &[&name, &description],
+            )?
+            .get(0);
         self.abilities.insert(name.to_string(), id);
         Ok(id)
     }
 
-    pub fn move_id(&mut self, conn: &Connection, name: &str) -> Result<i64> {
+    pub fn move_id(&mut self, c: &mut impl GenericClient, name: &str) -> Result<i64> {
         if let Some(id) = self.moves.get(name) {
             return Ok(*id);
         }
-        conn.execute(
-            "INSERT INTO move (name) VALUES (?1) ON CONFLICT(name) DO NOTHING",
-            [name],
+        c.execute(
+            "INSERT INTO move (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
+            &[&name],
         )?;
-        let id: i64 = conn.query_row("SELECT id FROM move WHERE name = ?1", [name], |r| r.get(0))?;
+        let id: i64 = c.query_one("SELECT id FROM move WHERE name = $1", &[&name])?.get(0);
         self.moves.insert(name.to_string(), id);
         Ok(id)
     }
@@ -97,7 +99,7 @@ impl Resolver {
     /// Look up an existing pokemon by its natural key. Does not create.
     pub fn pokemon_id(
         &mut self,
-        conn: &Connection,
+        c: &mut impl GenericClient,
         national_dex_no: i64,
         form_slug: &str,
     ) -> Result<Option<i64>> {
@@ -105,13 +107,12 @@ impl Resolver {
         if let Some(id) = self.pokemon.get(&key) {
             return Ok(Some(*id));
         }
-        let id: Option<i64> = conn
-            .query_row(
-                "SELECT id FROM pokemon WHERE national_dex_no = ?1 AND form_slug = ?2",
-                rusqlite::params![national_dex_no, form_slug],
-                |r| r.get(0),
-            )
-            .optional()?;
+        let id: Option<i64> = c
+            .query_opt(
+                "SELECT id FROM pokemon WHERE national_dex_no = $1 AND form_slug = $2",
+                &[&national_dex_no, &form_slug],
+            )?
+            .map(|r| r.get(0));
         if let Some(id) = id {
             self.pokemon.insert(key, id);
         }

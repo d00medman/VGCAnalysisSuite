@@ -22,14 +22,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
  && install -m0755 target/release/pokedex /usr/local/bin/pokedex
 
 FROM debian:bookworm-slim AS runtime
-# rusqlite `bundled` links SQLite statically, so the runtime needs only glibc.
-RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin pokedex \
- && mkdir -p /data && chown pokedex:pokedex /data
+# The postgres driver is pure Rust, so the runtime needs only glibc. The container is
+# stateless: all state lives in Postgres, reached through DATABASE_URL.
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin pokedex
 COPY --from=builder /usr/local/bin/pokedex /usr/local/bin/pokedex
 USER 10001:10001
-# /data is the state boundary. Deliberately no VOLUME instruction: it would create an
-# ungarbage-collected anonymous volume on every `docker run` and freeze the path.
 # Migrations are include_str!'d into the binary, so no migrations dir is shipped.
-ENV POKEDEX_DB=/data/pokedex.db
 ENTRYPOINT ["pokedex"]
 CMD ["--help"]

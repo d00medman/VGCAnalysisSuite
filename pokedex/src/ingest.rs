@@ -17,7 +17,8 @@ use crate::error::{Error, Result};
 use crate::model::*;
 use crate::regulation::{self, Regulation};
 use crate::resolve::Resolver;
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use postgres::types::ToSql;
+use postgres::{Client, Row, Transaction};
 use std::collections::HashSet;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -34,6 +35,9 @@ pub struct IngestReport {
     pub abilities_closed: usize,
     pub learnset_opened: usize,
     pub learnset_closed: usize,
+    pub items_upserted: usize,
+    pub items_legal_opened: usize,
+    pub items_legal_closed: usize,
 }
 
 impl IngestReport {
@@ -44,21 +48,22 @@ impl IngestReport {
             && self.types_opened + self.types_closed == 0
             && self.abilities_opened + self.abilities_closed == 0
             && self.learnset_opened + self.learnset_closed == 0
+            && self.items_legal_opened + self.items_legal_closed == 0
     }
 }
 
 /// Apply a snapshot. Everything happens in one transaction: a malformed record aborts
 /// the whole submission rather than leaving a half-applied regulation.
-pub fn apply(conn: &mut Connection, snap: &Snapshot) -> Result<IngestReport> {
-    let tx = conn.transaction()?;
-    let report = apply_in(&tx, snap)?;
+pub fn apply(client: &mut Client, snap: &Snapshot) -> Result<IngestReport> {
+    let mut tx = client.transaction()?;
+    let report = apply_in(&mut tx, snap)?;
     tx.commit()?;
     Ok(report)
 }
 
 /// Apply inside a caller-owned transaction, so `--dry-run` can roll back and a pipeline
 /// can batch several snapshots into one commit.
-pub fn apply_in(tx: &Transaction, snap: &Snapshot) -> Result<IngestReport> {
+pub fn apply_in(tx: &mut Transaction, snap: &Snapshot) -> Result<IngestReport> {
     let reg = regulation::by_name(tx, &snap.regulation)?;
     let prev = regulation::previous(tx, reg.id)?;
     let mut r = Resolver::new();
@@ -69,6 +74,9 @@ pub fn apply_in(tx: &Transaction, snap: &Snapshot) -> Result<IngestReport> {
     }
     for m in &snap.moves {
         upsert_move_data(tx, &mut r, m, &reg, prev.as_ref(), &mut rep)?;
+    }
+    if let Some(items) = &snap.items {
+        sync_items(tx, items, &reg, &mut rep)?;
     }
 
     // Two passes over pokemon: `variant.base_pokemon_id` is a self-FK, so every base
@@ -103,7 +111,7 @@ pub fn apply_in(tx: &Transaction, snap: &Snapshot) -> Result<IngestReport> {
     Ok(rep)
 }
 
-/// Invariants SQLite cannot declare.
+/// Invariants the schema cannot declare.
 fn validate(p: &PokemonRecord) -> Result<()> {
     let who = format!("#{}{}", p.national_dex_no, if p.form_slug.is_empty() { String::new() } else { format!(" ({})", p.form_slug) });
     if let Some(types) = &p.types {
@@ -145,33 +153,31 @@ fn validate(p: &PokemonRecord) -> Result<()> {
 }
 
 fn upsert_pokemon(
-    tx: &Transaction,
+    tx: &mut Transaction,
     r: &mut Resolver,
     p: &PokemonRecord,
     rep: &mut IngestReport,
 ) -> Result<i64> {
-    tx.execute(
-        "INSERT INTO pokemon (national_dex_no, form_slug, name, genus, height_dm, weight_hg)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT(national_dex_no, form_slug) DO UPDATE SET
-           name      = excluded.name,
-           genus     = COALESCE(excluded.genus,     pokemon.genus),
-           height_dm = COALESCE(excluded.height_dm, pokemon.height_dm),
-           weight_hg = COALESCE(excluded.weight_hg, pokemon.weight_hg)",
-        params![p.national_dex_no, p.form_slug, p.name, p.genus, p.height_dm, p.weight_hg],
-    )?;
-    let id: i64 = tx.query_row(
-        "SELECT id FROM pokemon WHERE national_dex_no = ?1 AND form_slug = ?2",
-        params![p.national_dex_no, p.form_slug],
-        |row| row.get(0),
-    )?;
+    let id: i64 = tx
+        .query_one(
+            "INSERT INTO pokemon (national_dex_no, form_slug, name, genus, height_dm, weight_hg)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (national_dex_no, form_slug) DO UPDATE SET
+               name      = excluded.name,
+               genus     = COALESCE(excluded.genus,     pokemon.genus),
+               height_dm = COALESCE(excluded.height_dm, pokemon.height_dm),
+               weight_hg = COALESCE(excluded.weight_hg, pokemon.weight_hg)
+             RETURNING id",
+            &[&p.national_dex_no, &p.form_slug, &p.name, &p.genus, &p.height_dm, &p.weight_hg],
+        )?
+        .get(0);
     r.cache_pokemon(p.national_dex_no, &p.form_slug, id);
     rep.pokemon_upserted += 1;
     Ok(id)
 }
 
 fn upsert_variant(
-    tx: &Transaction,
+    tx: &mut Transaction,
     r: &mut Resolver,
     p: &PokemonRecord,
     v: &VariantRecord,
@@ -189,12 +195,12 @@ fn upsert_variant(
     let kind = r.variant_kind_id(tx, &v.kind)?;
     tx.execute(
         "INSERT INTO variant (pokemon_id, base_pokemon_id, variant_kind_id, required_item)
-         VALUES (?1, ?2, ?3, ?4)
-         ON CONFLICT(pokemon_id) DO UPDATE SET
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (pokemon_id) DO UPDATE SET
            base_pokemon_id = excluded.base_pokemon_id,
            variant_kind_id = excluded.variant_kind_id,
            required_item   = COALESCE(excluded.required_item, variant.required_item)",
-        params![pid, base, kind, v.required_item],
+        &[&pid, &base, &kind, &v.required_item],
     )?;
     rep.variants_upserted += 1;
     Ok(())
@@ -205,44 +211,36 @@ fn upsert_variant(
 /// Write a stat row only when the values differ from what resolves at the previous
 /// regulation. This is what keeps `pokemon_stats` sparse while callers feed dense.
 fn upsert_stats(
-    tx: &Transaction,
+    tx: &mut Transaction,
     pokemon_id: i64,
     s: &Stats,
     reg: &Regulation,
     prev: Option<&Regulation>,
     rep: &mut IngestReport,
 ) -> Result<()> {
+    let to_stats = |row: Row| Stats {
+        hp: row.get(0), attack: row.get(1), defense: row.get(2),
+        sp_attack: row.get(3), sp_defense: row.get(4), speed: row.get(5),
+    };
     let inherited: Option<Stats> = match prev {
         None => None,
         Some(p) => tx
-            .query_row(
+            .query_opt(
                 "SELECT base_hp, base_attack, base_defense, base_sp_attack, base_sp_defense, base_speed
-                 FROM pokemon_stats_effective WHERE pokemon_id = ?1 AND regulation_id = ?2",
-                params![pokemon_id, p.id],
-                |row| {
-                    Ok(Stats {
-                        hp: row.get(0)?, attack: row.get(1)?, defense: row.get(2)?,
-                        sp_attack: row.get(3)?, sp_defense: row.get(4)?, speed: row.get(5)?,
-                    })
-                },
-            )
-            .optional()?,
+                 FROM pokemon_stats_effective WHERE pokemon_id = $1 AND regulation_id = $2",
+                &[&pokemon_id, &p.id],
+            )?
+            .map(to_stats),
     };
 
     // Already-stored row for THIS regulation: a correction must still be applied.
     let stored_here: Option<Stats> = tx
-        .query_row(
+        .query_opt(
             "SELECT base_hp, base_attack, base_defense, base_sp_attack, base_sp_defense, base_speed
-             FROM pokemon_stats WHERE pokemon_id = ?1 AND regulation_id = ?2",
-            params![pokemon_id, reg.id],
-            |row| {
-                Ok(Stats {
-                    hp: row.get(0)?, attack: row.get(1)?, defense: row.get(2)?,
-                    sp_attack: row.get(3)?, sp_defense: row.get(4)?, speed: row.get(5)?,
-                })
-            },
-        )
-        .optional()?;
+             FROM pokemon_stats WHERE pokemon_id = $1 AND regulation_id = $2",
+            &[&pokemon_id, &reg.id],
+        )?
+        .map(to_stats);
 
     if stored_here.is_none() && inherited.as_ref() == Some(s) {
         rep.stats_unchanged += 1;
@@ -257,12 +255,12 @@ fn upsert_stats(
         "INSERT INTO pokemon_stats
            (pokemon_id, regulation_id, base_hp, base_attack, base_defense,
             base_sp_attack, base_sp_defense, base_speed)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
-         ON CONFLICT(pokemon_id, regulation_id) DO UPDATE SET
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (pokemon_id, regulation_id) DO UPDATE SET
            base_hp=excluded.base_hp, base_attack=excluded.base_attack,
            base_defense=excluded.base_defense, base_sp_attack=excluded.base_sp_attack,
            base_sp_defense=excluded.base_sp_defense, base_speed=excluded.base_speed",
-        params![pokemon_id, reg.id, s.hp, s.attack, s.defense, s.sp_attack, s.sp_defense, s.speed],
+        &[&pokemon_id, &reg.id, &s.hp, &s.attack, &s.defense, &s.sp_attack, &s.sp_defense, &s.speed],
     )?;
     rep.stats_written += 1;
     Ok(())
@@ -272,7 +270,7 @@ fn upsert_stats(
 type MoveTuple = (i64, String, Option<i64>, Option<i64>, Option<i64>, i64, Option<String>, Option<i64>);
 
 fn upsert_move_data(
-    tx: &Transaction,
+    tx: &mut Transaction,
     r: &mut Resolver,
     m: &MoveRecord,
     reg: &Regulation,
@@ -288,28 +286,26 @@ fn upsert_move_data(
         m.secondary_effect.clone(), m.effect_chance,
     );
 
-    let read = |sql: &str, a: i64, b: i64| -> Result<Option<MoveTuple>> {
-        Ok(tx
-            .query_row(sql, params![a, b], |row| {
-                Ok((
-                    row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?,
-                    row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?,
-                ))
-            })
-            .optional()?)
+    let mut read = |sql: &str, a: i64, b: i64| -> Result<Option<MoveTuple>> {
+        Ok(tx.query_opt(sql, &[&a, &b])?.map(|row| {
+            (
+                row.get(0), row.get(1), row.get(2), row.get(3),
+                row.get(4), row.get(5), row.get(6), row.get(7),
+            )
+        }))
     };
 
     let inherited = match prev {
         None => None,
         Some(p) => read(
             "SELECT type_id, damage_class, power, accuracy, pp, priority, secondary_effect, effect_chance
-             FROM move_data_effective WHERE move_id = ?1 AND regulation_id = ?2",
+             FROM move_data_effective WHERE move_id = $1 AND regulation_id = $2",
             move_id, p.id,
         )?,
     };
     let stored_here = read(
         "SELECT type_id, damage_class, power, accuracy, pp, priority, secondary_effect, effect_chance
-         FROM move_data WHERE move_id = ?1 AND regulation_id = ?2",
+         FROM move_data WHERE move_id = $1 AND regulation_id = $2",
         move_id, reg.id,
     )?;
 
@@ -324,15 +320,15 @@ fn upsert_move_data(
         "INSERT INTO move_data
            (move_id, regulation_id, type_id, damage_class, power, accuracy, pp, priority,
             secondary_effect, effect_chance)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
-         ON CONFLICT(move_id, regulation_id) DO UPDATE SET
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (move_id, regulation_id) DO UPDATE SET
            type_id=excluded.type_id, damage_class=excluded.damage_class,
            power=excluded.power, accuracy=excluded.accuracy, pp=excluded.pp,
            priority=excluded.priority, secondary_effect=excluded.secondary_effect,
            effect_chance=excluded.effect_chance",
-        params![
-            move_id, reg.id, type_id, m.damage_class.as_str(), m.power, m.accuracy,
-            m.pp, m.priority, m.secondary_effect, m.effect_chance
+        &[
+            &move_id, &reg.id, &type_id, &m.damage_class.as_str(), &m.power, &m.accuracy,
+            &m.pp, &m.priority, &m.secondary_effect, &m.effect_chance,
         ],
     )?;
     rep.move_data_written += 1;
@@ -343,26 +339,26 @@ fn upsert_move_data(
 //
 // All three follow the same shape: read the currently-open set, close what is gone,
 // open what is new, leave matches untouched. Closing happens first because the
-// one-open-window triggers reject a second open row for a key.
+// one-open-window indexes reject a second open row for a key.
 
 fn close_open(
-    tx: &Transaction,
+    tx: &mut Transaction,
     table: &str,
     key_sql: &str,
-    params: &[&dyn rusqlite::ToSql],
+    params: &[&(dyn ToSql + Sync)],
     reg_id: i64,
 ) -> Result<usize> {
     let sql = format!(
-        "UPDATE {table} SET valid_to_regulation_id = ?1
+        "UPDATE {table} SET valid_to_regulation_id = $1
          WHERE valid_to_regulation_id IS NULL AND {key_sql}"
     );
-    let mut all: Vec<&dyn rusqlite::ToSql> = vec![&reg_id];
+    let mut all: Vec<&(dyn ToSql + Sync)> = vec![&reg_id];
     all.extend_from_slice(params);
-    Ok(tx.execute(&sql, all.as_slice())?)
+    Ok(tx.execute(&sql, &all)? as usize)
 }
 
 fn sync_types(
-    tx: &Transaction,
+    tx: &mut Transaction,
     r: &mut Resolver,
     pokemon_id: i64,
     types: &[String],
@@ -374,19 +370,20 @@ fn sync_types(
         want.push((i as i64 + 1, r.type_id(tx, name)?));
     }
 
-    let mut stmt = tx.prepare(
-        "SELECT slot, type_id FROM pokemon_type
-         WHERE pokemon_id = ?1 AND valid_to_regulation_id IS NULL",
-    )?;
-    let have: Vec<(i64, i64)> = stmt
-        .query_map([pokemon_id], |row| Ok((row.get(0)?, row.get(1)?)))?
-        .collect::<rusqlite::Result<_>>()?;
-    drop(stmt);
+    let have: Vec<(i64, i64)> = tx
+        .query(
+            "SELECT slot, type_id FROM pokemon_type
+             WHERE pokemon_id = $1 AND valid_to_regulation_id IS NULL",
+            &[&pokemon_id],
+        )?
+        .iter()
+        .map(|row| (row.get(0), row.get(1)))
+        .collect();
 
     for (slot, tid) in &have {
         if !want.contains(&(*slot, *tid)) {
             rep.types_closed += close_open(
-                tx, "pokemon_type", "pokemon_id = ?2 AND slot = ?3",
+                tx, "pokemon_type", "pokemon_id = $2 AND slot = $3",
                 &[&pokemon_id, slot], reg.id,
             )?;
         }
@@ -395,10 +392,10 @@ fn sync_types(
         if !have.contains(&(*slot, *tid)) {
             tx.execute(
                 "INSERT INTO pokemon_type (pokemon_id, slot, type_id, valid_from_regulation_id)
-                 VALUES (?1,?2,?3,?4)
-                 ON CONFLICT(pokemon_id, slot, valid_from_regulation_id) DO UPDATE SET
+                 VALUES ($1,$2,$3,$4)
+                 ON CONFLICT (pokemon_id, slot, valid_from_regulation_id) DO UPDATE SET
                    type_id = excluded.type_id, valid_to_regulation_id = NULL",
-                params![pokemon_id, slot, tid, reg.id],
+                &[&pokemon_id, slot, tid, &reg.id],
             )?;
             rep.types_opened += 1;
         }
@@ -407,7 +404,7 @@ fn sync_types(
 }
 
 fn sync_abilities(
-    tx: &Transaction,
+    tx: &mut Transaction,
     r: &mut Resolver,
     pokemon_id: i64,
     ab: &Abilities,
@@ -419,19 +416,20 @@ fn sync_abilities(
         want.push((slot.to_string(), r.ability_id(tx, name, None)?));
     }
 
-    let mut stmt = tx.prepare(
-        "SELECT slot, ability_id FROM pokemon_ability
-         WHERE pokemon_id = ?1 AND valid_to_regulation_id IS NULL",
-    )?;
-    let have: Vec<(String, i64)> = stmt
-        .query_map([pokemon_id], |row| Ok((row.get(0)?, row.get(1)?)))?
-        .collect::<rusqlite::Result<_>>()?;
-    drop(stmt);
+    let have: Vec<(String, i64)> = tx
+        .query(
+            "SELECT slot, ability_id FROM pokemon_ability
+             WHERE pokemon_id = $1 AND valid_to_regulation_id IS NULL",
+            &[&pokemon_id],
+        )?
+        .iter()
+        .map(|row| (row.get(0), row.get(1)))
+        .collect();
 
     for (slot, aid) in &have {
         if !want.contains(&(slot.clone(), *aid)) {
             rep.abilities_closed += close_open(
-                tx, "pokemon_ability", "pokemon_id = ?2 AND slot = ?3",
+                tx, "pokemon_ability", "pokemon_id = $2 AND slot = $3",
                 &[&pokemon_id, slot], reg.id,
             )?;
         }
@@ -440,10 +438,10 @@ fn sync_abilities(
         if !have.contains(&(slot.clone(), *aid)) {
             tx.execute(
                 "INSERT INTO pokemon_ability (pokemon_id, slot, ability_id, valid_from_regulation_id)
-                 VALUES (?1,?2,?3,?4)
-                 ON CONFLICT(pokemon_id, slot, valid_from_regulation_id) DO UPDATE SET
+                 VALUES ($1,$2,$3,$4)
+                 ON CONFLICT (pokemon_id, slot, valid_from_regulation_id) DO UPDATE SET
                    ability_id = excluded.ability_id, valid_to_regulation_id = NULL",
-                params![pokemon_id, slot, aid, reg.id],
+                &[&pokemon_id, slot, aid, &reg.id],
             )?;
             rep.abilities_opened += 1;
         }
@@ -452,7 +450,7 @@ fn sync_abilities(
 }
 
 fn sync_learnset(
-    tx: &Transaction,
+    tx: &mut Transaction,
     r: &mut Resolver,
     pokemon_id: i64,
     entries: &[LearnsetEntry],
@@ -466,21 +464,22 @@ fn sync_learnset(
         want.insert((mid, e.method.as_str().to_string(), level));
     }
 
-    let mut stmt = tx.prepare(
-        "SELECT move_id, learn_method, level FROM pokemon_move
-         WHERE pokemon_id = ?1 AND valid_to_regulation_id IS NULL",
-    )?;
-    let have: HashSet<(i64, String, i64)> = stmt
-        .query_map([pokemon_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
-        .collect::<rusqlite::Result<_>>()?;
-    drop(stmt);
+    let have: HashSet<(i64, String, i64)> = tx
+        .query(
+            "SELECT move_id, learn_method, level FROM pokemon_move
+             WHERE pokemon_id = $1 AND valid_to_regulation_id IS NULL",
+            &[&pokemon_id],
+        )?
+        .iter()
+        .map(|row| (row.get(0), row.get(1), row.get(2)))
+        .collect();
 
     // Only entries that actually disappeared are touched — a one-move change must not
     // rewrite the rest of the learnset.
     for (mid, method, level) in have.difference(&want) {
         rep.learnset_closed += close_open(
             tx, "pokemon_move",
-            "pokemon_id = ?2 AND move_id = ?3 AND learn_method = ?4 AND level = ?5",
+            "pokemon_id = $2 AND move_id = $3 AND learn_method = $4 AND level = $5",
             &[&pokemon_id, mid, method, level], reg.id,
         )?;
     }
@@ -488,12 +487,61 @@ fn sync_learnset(
         tx.execute(
             "INSERT INTO pokemon_move
                (pokemon_id, move_id, learn_method, level, valid_from_regulation_id)
-             VALUES (?1,?2,?3,?4,?5)
-             ON CONFLICT(pokemon_id, move_id, learn_method, level, valid_from_regulation_id)
+             VALUES ($1,$2,$3,$4,$5)
+             ON CONFLICT (pokemon_id, move_id, learn_method, level, valid_from_regulation_id)
              DO UPDATE SET valid_to_regulation_id = NULL",
-            params![pokemon_id, mid, method, level, reg.id],
+            &[&pokemon_id, mid, method, level, &reg.id],
         )?;
         rep.learnset_opened += 1;
+    }
+    Ok(())
+}
+
+/// Upsert every item, then sync `item_legality` against the snapshot's list the same
+/// way learnsets are synced: close what disappeared, open what is new.
+fn sync_items(
+    tx: &mut Transaction,
+    items: &[ItemRecord],
+    reg: &Regulation,
+    rep: &mut IngestReport,
+) -> Result<()> {
+    let mut want: HashSet<i64> = HashSet::new();
+    for it in items {
+        let id: i64 = tx
+            .query_one(
+                "INSERT INTO item (name, display_name, category, fling_power, description)
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (name) DO UPDATE SET
+                   display_name = excluded.display_name,
+                   category     = excluded.category,
+                   fling_power  = excluded.fling_power,
+                   description  = COALESCE(excluded.description, item.description)
+                 RETURNING id",
+                &[&it.name, &it.display_name, &it.category.as_str(), &it.fling_power, &it.description],
+            )?
+            .get(0);
+        want.insert(id);
+        rep.items_upserted += 1;
+    }
+
+    let have: HashSet<i64> = tx
+        .query("SELECT item_id FROM item_legality WHERE valid_to_regulation_id IS NULL", &[])?
+        .iter()
+        .map(|row| row.get(0))
+        .collect();
+
+    for id in have.difference(&want) {
+        rep.items_legal_closed +=
+            close_open(tx, "item_legality", "item_id = $2", &[id], reg.id)?;
+    }
+    for id in want.difference(&have) {
+        tx.execute(
+            "INSERT INTO item_legality (item_id, valid_from_regulation_id) VALUES ($1, $2)
+             ON CONFLICT (item_id, valid_from_regulation_id)
+             DO UPDATE SET valid_to_regulation_id = NULL",
+            &[id, &reg.id],
+        )?;
+        rep.items_legal_opened += 1;
     }
     Ok(())
 }

@@ -6,11 +6,11 @@ use std::io::Read;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "pokedex", about = "SQLite pokedex schema and regulation-aware ingest")]
+#[command(name = "pokedex", about = "Postgres pokedex schema and regulation-aware ingest")]
 struct Cli {
-    /// Database file. Defaults to the container state boundary.
-    #[arg(long, env = "POKEDEX_DB", default_value = "/data/pokedex.db", global = true)]
-    db: PathBuf,
+    /// Postgres connection URL, e.g. postgres://pokedex:pokedex@localhost:5432/pokedex
+    #[arg(long, env = "DATABASE_URL", hide_env_values = true, global = true)]
+    database_url: String,
 
     /// Apply pending migrations automatically before running the command.
     #[arg(
@@ -30,7 +30,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Create the database and apply all migrations.
+    /// Apply all migrations to an empty database.
     Init,
     /// Apply pending migrations.
     Migrate,
@@ -75,14 +75,8 @@ enum RegulationCmd {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    if let Some(parent) = cli.db.parent() {
-        if !parent.as_os_str().is_empty() && !parent.exists() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("creating {}", parent.display()))?;
-        }
-    }
-
-    let mut db = Db::open(&cli.db).with_context(|| format!("opening {}", cli.db.display()))?;
+    // Not echoing the URL on failure: it carries the password.
+    let mut db = Db::connect(&cli.database_url).context("connecting to postgres")?;
 
     if matches!(cli.command, Command::Init | Command::Migrate) || cli.auto_migrate {
         let applied = db.migrate()?;
@@ -97,7 +91,7 @@ fn main() -> Result<()> {
         Command::Init | Command::Migrate => {
             println!("schema version {}", db.schema_version()?);
         }
-        Command::Status => status(&db)?,
+        Command::Status => status(&mut db)?,
         Command::Import { regulation, file, dry_run } => {
             db.require_current_schema()?;
             let raw = match file.as_deref() {
@@ -114,12 +108,12 @@ fn main() -> Result<()> {
 
             let report = if dry_run {
                 // Roll back by applying inside a transaction that is never committed.
-                let tx = db.conn_mut().transaction()?;
-                let r = ingest::apply_in(&tx, &snap)?;
+                let mut tx = db.client().transaction()?;
+                let r = ingest::apply_in(&mut tx, &snap)?;
                 tx.rollback()?;
                 r
             } else {
-                ingest::apply(db.conn_mut(), &snap)?
+                ingest::apply(db.client(), &snap)?
             };
 
             println!("regulation      : {}", snap.regulation);
@@ -145,6 +139,10 @@ fn main() -> Result<()> {
                 "learnset        : {} opened, {} closed",
                 report.learnset_opened, report.learnset_closed
             );
+            println!(
+                "items           : {} upserted, {} made legal, {} made illegal",
+                report.items_upserted, report.items_legal_opened, report.items_legal_closed
+            );
             if report.is_noop() {
                 println!("=> no-op: snapshot matched stored state exactly");
             }
@@ -157,7 +155,7 @@ fn main() -> Result<()> {
             match cmd {
                 RegulationCmd::Add { name, effective_from, notes } => {
                     let id = regulation::add(
-                        db.conn(),
+                        db.client(),
                         &name,
                         &effective_from,
                         notes.as_deref(),
@@ -165,7 +163,7 @@ fn main() -> Result<()> {
                     println!("added regulation {id}: {name} effective {effective_from}");
                 }
                 RegulationCmd::List => {
-                    for w in regulation::windows(db.conn())? {
+                    for w in regulation::windows(db.client())? {
                         println!(
                             "{:<24} {} -> {}",
                             w.name,
@@ -198,10 +196,10 @@ fn read_stdin() -> Result<String> {
     Ok(s)
 }
 
-fn status(db: &Db) -> Result<()> {
+fn status(db: &mut Db) -> Result<()> {
     let version = db.schema_version()?;
     println!("schema version : {version} / {}", migrate::LATEST_VERSION);
-    let pending = migrate::pending(db.conn())?;
+    let pending = migrate::pending(db.client())?;
     if !pending.is_empty() {
         println!("pending        : {}", pending.join(", "));
     }
@@ -211,11 +209,13 @@ fn status(db: &Db) -> Result<()> {
     for table in [
         "regulation", "type", "type_chart_rule", "nature", "variant_kind",
         "pokemon", "variant", "ability", "move", "pokemon_stats", "move_data",
-        "pokemon_type", "pokemon_ability", "pokemon_move",
+        "pokemon_type", "pokemon_ability", "pokemon_move", "item", "item_legality",
+        "video", "battle", "transcript", "transcript_line",
     ] {
         let n: i64 = db
-            .conn()
-            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))?;
+            .client()
+            .query_one(&format!("SELECT count(*) FROM {table}"), &[])?
+            .get(0);
         println!("{table:<16}: {n}");
     }
     Ok(())
