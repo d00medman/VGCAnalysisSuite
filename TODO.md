@@ -15,3 +15,8 @@ Running list of things we want to do. Details live in the linked devlogs.
   pokedex (M-A and M-B are locked now that M-C is in): `scripts/backup-battles.sh`,
   recreate the DB, `scripts/rebuild-pokedex.sh`, restore the backup, re-export
   `pokedex/data/`. See [SchemaIteration.md](devlog/SchemaIteration.md) §4.
+- [ ] **Trainer table (the user table).** Next big core-schema change. Battle data will point
+  at it, so it's irreplaceable-side work: follow the workflow in
+  [SchemaIteration.md](devlog/SchemaIteration.md) §4 (back up battles, iterate on a
+  throwaway DB, commit before dev applies it), and consider the runner and scratch-DB
+  proposals in §5 first.
