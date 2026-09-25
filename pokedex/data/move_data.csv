@@ -382,6 +382,7 @@ skill-swap,Regulation M-A,psychic,status,,,10,0,,
 skitter-smack,Regulation M-A,bug,physical,70,90,10,0,"[{""chance"":100,""boosts"":{""spa"":-1}}]",100
 sky-attack,Regulation M-A,flying,physical,140,90,5,0,"[{""chance"":30,""volatileStatus"":""flinch""}]",30
 slack-off,Regulation M-A,normal,status,,,5,0,,
+slash,Regulation M-B,normal,physical,80,100,20,0,,
 sleep-powder,Regulation M-A,grass,status,,75,15,0,,
 sleep-talk,Regulation M-A,normal,status,,,10,0,,
 sludge-bomb,Regulation M-A,poison,special,90,100,10,0,"[{""chance"":30,""status"":""psn""}]",30
