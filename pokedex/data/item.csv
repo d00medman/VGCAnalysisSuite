@@ -1,8 +1,10 @@
 name,display_name,category,fling_power,description
 abomasite,Abomasite,mega-stone,80,"If held by an Abomasnow, this item allows it to Mega Evolve in battle."
 absolite,Absolite,mega-stone,80,"If held by an Absol, this item allows it to Mega Evolve into Mega Absol in battle."
+absolite-z,Absolite Z,mega-stone,80,"If held by an Absol, this item allows it to Mega Evolve into Mega Absol Z in battle."
 aerodactylite,Aerodactylite,mega-stone,80,"If held by an Aerodactyl, this item allows it to Mega Evolve in battle."
 aggronite,Aggronite,mega-stone,80,"If held by an Aggron, this item allows it to Mega Evolve in battle."
+air-balloon,Air Balloon,other,10,Holder is immune to Ground-type attacks. Pops when holder is hit.
 alakazite,Alakazite,mega-stone,80,"If held by an Alakazam, this item allows it to Mega Evolve in battle."
 altarianite,Altarianite,mega-stone,80,"If held by an Altaria, this item allows it to Mega Evolve in battle."
 ampharosite,Ampharosite,mega-stone,80,"If held by an Ampharos, this item allows it to Mega Evolve in battle."
@@ -11,8 +13,10 @@ audinite,Audinite,mega-stone,80,"If held by an Audino, this item allows it to Me
 babiri-berry,Babiri Berry,berry,10,Halves damage taken from a supereffective Steel-type attack. Single use.
 banettite,Banettite,mega-stone,80,"If held by a Banette, this item allows it to Mega Evolve in battle."
 barbaracite,Barbaracite,mega-stone,80,"If held by a Barbaracle, this item allows it to Mega Evolve in battle."
+baxcalibrite,Baxcalibrite,mega-stone,80,"If held by a Baxcalibur, this item allows it to Mega Evolve in battle."
 beedrillite,Beedrillite,mega-stone,80,"If held by a Beedrill, this item allows it to Mega Evolve in battle."
 big-root,Big Root,other,10,Holder gains 1.3× HP from draining/Aqua Ring/Ingrain/Leech Seed/Strength Sap.
+binding-band,Binding Band,other,30,Holder's partial-trapping moves deal 1/6 max HP per turn instead of 1/8.
 black-belt,Black Belt,other,30,Holder's Fighting-type attacks have 1.2× power.
 black-glasses,Black Glasses,other,30,Holder's Dark-type attacks have 1.2× power.
 blastoisinite,Blastoisinite,mega-stone,80,"If held by a Blastoise, this item allows it to Mega Evolve in battle."
@@ -42,6 +46,8 @@ dragon-fang,Dragon Fang,other,70,Holder's Dragon-type attacks have 1.2× power.
 dragoninite,Dragoninite,mega-stone,80,"If held by a Dragonite, this item allows it to Mega Evolve in battle."
 drampanite,Drampanite,mega-stone,80,"If held by a Drampa, this item allows it to Mega Evolve in battle."
 eelektrossite,Eelektrossite,mega-stone,80,"If held by an Eelektross, this item allows it to Mega Evolve in battle."
+eject-button,Eject Button,other,30,"If holder survives a hit, it immediately switches out to a chosen ally. Single use."
+electric-seed,Electric Seed,other,10,"If the terrain is Electric Terrain, raises holder's Defense by 1 stage. Single use."
 emboarite,Emboarite,mega-stone,80,"If held by an Emboar, this item allows it to Mega Evolve in battle."
 excadrite,Excadrite,mega-stone,80,"If held by an Excadrill, this item allows it to Mega Evolve in battle."
 expert-belt,Expert Belt,other,10,Holder's attacks that are super effective against the target do 1.2× damage.
@@ -54,11 +60,14 @@ focus-sash,Focus Sash,other,10,"If holder's HP is full, will survive an attack t
 froslassite,Froslassite,mega-stone,80,"If held by a Froslass, this item allows it to Mega Evolve in battle."
 galladite,Galladite,mega-stone,80,"If held by a Gallade, this item allows it to Mega Evolve in battle."
 garchompite,Garchompite,mega-stone,80,"If held by a Garchomp, this item allows it to Mega Evolve into Mega Garchomp."
+garchompite-z,Garchompite Z,mega-stone,80,"If held by a Garchomp, this item allows it to Mega Evolve into Mega Garchomp Z."
 gardevoirite,Gardevoirite,mega-stone,80,"If held by a Gardevoir, this item allows it to Mega Evolve in battle."
 gengarite,Gengarite,mega-stone,80,"If held by a Gengar, this item allows it to Mega Evolve in battle."
 glalitite,Glalitite,mega-stone,80,"If held by a Glalie, this item allows it to Mega Evolve in battle."
 glimmoranite,Glimmoranite,mega-stone,80,"If held by a Glimmora, this item allows it to Mega Evolve in battle."
+golisopite,Golisopite,mega-stone,80,"If held by a Golisopod, this item allows it to Mega Evolve in battle."
 golurkite,Golurkite,mega-stone,80,"If held by a Golurk, this item allows it to Mega Evolve in battle."
+grassy-seed,Grassy Seed,other,10,"If the terrain is Grassy Terrain, raises holder's Defense by 1 stage. Single use."
 greninjite,Greninjite,mega-stone,80,"If held by a Greninja, this item allows it to Mega Evolve in battle."
 gyaradosite,Gyaradosite,mega-stone,80,"If held by a Gyarados, this item allows it to Mega Evolve in battle."
 haban-berry,Haban Berry,berry,10,Halves damage taken from a supereffective Dragon-type attack. Single use.
@@ -73,6 +82,7 @@ kangaskhanite,Kangaskhanite,mega-stone,80,"If held by a Kangaskhan, this item al
 kasib-berry,Kasib Berry,berry,10,Halves damage taken from a supereffective Ghost-type attack. Single use.
 kebia-berry,Kebia Berry,berry,10,Halves damage taken from a supereffective Poison-type attack. Single use.
 kings-rock,King's Rock,other,30,Holder's attacks without a chance to flinch gain a 10% chance to flinch.
+leek,Leek,other,60,"If held by a Farfetch’d or Sirfetch’d, its critical hit ratio is raised by 2 stages."
 leftovers,Leftovers,other,10,"At the end of every turn, holder restores 1/16 of its max HP."
 leppa-berry,Leppa Berry,berry,10,Restores 10 PP to the first of the holder's moves to reach 0 PP. Single use.
 life-orb,Life Orb,other,30,"Holder's attacks do 1.3× damage, and it loses 1/10 its max HP after the attack."
@@ -80,6 +90,7 @@ light-ball,Light Ball,other,30,"If held by a Pikachu, its Attack and Sp. Atk are
 light-clay,Light Clay,other,30,"Holder's use of Aurora Veil, Light Screen, or Reflect lasts 8 turns instead of 5."
 lopunnite,Lopunnite,mega-stone,80,"If held by a Lopunny, this item allows it to Mega Evolve in battle."
 lucarionite,Lucarionite,mega-stone,80,"If held by a Lucario, this item allows it to Mega Evolve into Mega Lucario in battle."
+lucarionite-z,Lucarionite Z,mega-stone,80,"If held by a Lucario, this item allows it to Mega Evolve into Mega Lucario Z in battle."
 lum-berry,Lum Berry,berry,10,Holder cures itself if it has a non-volatile status or is confused. Single use.
 magnet,Magnet,other,30,Holder's Electric-type attacks have 1.2× power.
 malamarite,Malamarite,mega-stone,80,"If held by a Malamar, this item allows it to Mega Evolve in battle."
@@ -93,9 +104,11 @@ metagrossite,Metagrossite,mega-stone,80,"If held by a Metagross, this item allow
 metal-coat,Metal Coat,other,30,Holder's Steel-type attacks have 1.2× power.
 metronome,Metronome,other,30,Damage of moves used on consecutive turns is increased. Max 2× after 5 turns.
 miracle-seed,Miracle Seed,other,30,Holder's Grass-type attacks have 1.2× power.
+misty-seed,Misty Seed,other,10,"If the terrain is Misty Terrain, raises holder's Sp. Def by 1 stage. Single use."
 muscle-band,Muscle Band,other,10,Holder's physical attacks have 1.1× power.
 mystic-water,Mystic Water,other,30,Holder's Water-type attacks have 1.2× power.
 never-melt-ice,Never-Melt Ice,other,30,Holder's Ice-type attacks have 1.2× power.
+normal-gem,Normal Gem,other,,Holder's first successful Normal-type attack will have 1.3× power. Single use.
 occa-berry,Occa Berry,berry,10,Halves damage taken from a supereffective Fire-type attack. Single use.
 oran-berry,Oran Berry,berry,10,Restores 10 HP when at 1/2 max HP or less. Single use.
 passho-berry,Passho Berry,berry,10,Halves damage taken from a supereffective Water-type attack. Single use.
@@ -105,14 +118,18 @@ persim-berry,Persim Berry,berry,10,Holder is cured if it is confused. Single use
 pidgeotite,Pidgeotite,mega-stone,80,"If held by a Pidgeot, this item allows it to Mega Evolve in battle."
 pinsirite,Pinsirite,mega-stone,80,"If held by a Pinsir, this item allows it to Mega Evolve in battle."
 poison-barb,Poison Barb,other,70,Holder's Poison-type attacks have 1.2× power.
+psychic-seed,Psychic Seed,other,10,"If the terrain is Psychic Terrain, raises holder's Sp. Def by 1 stage. Single use."
 pyroarite,Pyroarite,mega-stone,80,"If held by a Pyroar, this item allows it to Mega Evolve in battle."
 quick-claw,Quick Claw,other,80,"Each turn, holder has a 20% chance to move first in its priority bracket."
 raichunite-x,Raichunite X,mega-stone,80,"If held by a Raichu, this item allows it to Mega Evolve into Mega Raichu X in battle."
 raichunite-y,Raichunite Y,mega-stone,80,"If held by a Raichu, this item allows it to Mega Evolve into Mega Raichu Y in battle."
 rawst-berry,Rawst Berry,berry,10,Holder is cured if it is burned. Single use.
+red-card,Red Card,other,10,"If holder survives a hit, attacker is forced to switch to a random ally. Single use."
 rindo-berry,Rindo Berry,berry,10,Halves damage taken from a supereffective Grass-type attack. Single use.
+rocky-helmet,Rocky Helmet,other,60,"If holder is hit by a contact move, the attacker loses 1/6 of its max HP."
 roseli-berry,Roseli Berry,berry,10,Halves damage taken from a supereffective Fairy-type attack. Single use.
 sablenite,Sablenite,mega-stone,80,"If held by a Sableye, this item allows it to Mega Evolve in battle."
+salamencite,Salamencite,mega-stone,80,"If held by a Salamence, this item allows it to Mega Evolve in battle."
 sceptilite,Sceptilite,mega-stone,80,"If held by a Sceptile, this item allows it to Mega Evolve in battle."
 scizorite,Scizorite,mega-stone,80,"If held by a Scizor, this item allows it to Mega Evolve in battle."
 scolipite,Scolipite,mega-stone,80,"If held by a Scolipede, this item allows it to Mega Evolve in battle."
@@ -128,7 +145,7 @@ silk-scarf,Silk Scarf,other,10,Holder's Normal-type attacks have 1.2× power.
 silver-powder,Silver Powder,other,10,Holder's Bug-type attacks have 1.2× power.
 sitrus-berry,Sitrus Berry,berry,10,Restores 1/4 max HP when at 1/2 max HP or less. Single use.
 skarmorite,Skarmorite,mega-stone,80,"If held by a Skarmory, this item allows it to Mega Evolve in battle."
-slowbronite,Slowbronite,mega-stone,80,"If held by a Slowbro, this item allows it to Mega Evolve in battle."
+slowbronite,Slowbronite,mega-stone,80,"If held by a Slowbro (not Galarian Slowbro), this item allows it to Mega Evolve."
 smooth-rock,Smooth Rock,other,10,Holder's use of Sandstorm lasts 8 turns instead of 5.
 soft-sand,Soft Sand,other,10,Holder's Ground-type attacks have 1.2× power.
 spell-tag,Spell Tag,other,30,Holder's Ghost-type attacks have 1.2× power.
@@ -137,6 +154,7 @@ starminite,Starminite,mega-stone,80,"If held by a Starmie, this item allows it t
 steelixite,Steelixite,mega-stone,80,"If held by a Steelix, this item allows it to Mega Evolve in battle."
 swampertite,Swampertite,mega-stone,80,"If held by a Swampert, this item allows it to Mega Evolve in battle."
 tanga-berry,Tanga Berry,berry,10,Halves damage taken from a supereffective Bug-type attack. Single use.
+terrain-extender,Terrain Extender,other,60,Holder's use of Electric/Grassy/Misty/Psychic Terrain lasts 8 turns instead of 5.
 twisted-spoon,Twisted Spoon,other,30,Holder's Psychic-type attacks have 1.2× power.
 tyranitarite,Tyranitarite,mega-stone,80,"If held by a Tyranitar, this item allows it to Mega Evolve in battle."
 venusaurite,Venusaurite,mega-stone,80,"If held by a Venusaur, this item allows it to Mega Evolve in battle."

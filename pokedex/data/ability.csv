@@ -13,6 +13,7 @@ aroma-veil,Aroma Veil,"Protects user/allies from Attract, Disable, Encore, Heal 
 as-one-glastrier,As One (Glastrier),Combination of the Unnerve and Chilling Neigh Abilities.
 as-one-spectrier,As One (Spectrier),Combination of the Unnerve and Grim Neigh Abilities.
 aura-break,Aura Break,"While this Pokemon is active, the Dark Aura and Fairy Aura power modifier is 0.75×."
+aura-guard,,
 bad-dreams,Bad Dreams,Causes sleeping foes to lose 1/8 of their max HP at the end of each turn.
 ball-fetch,Ball Fetch,No competitive use.
 battery,Battery,This Pokemon's allies have the power of their special attacks multiplied by 1.3.
@@ -98,7 +99,7 @@ gulp-missile,Gulp Missile,"When hit after Surf/Dive, attacker takes 1/4 max HP a
 guts,Guts,"If this Pokemon is statused, its Attack is 1.5×; ignores burn halving physical damage."
 hadron-engine,Hadron Engine,"On switch-in, summons Electric Terrain. During Electric Terrain, Sp. Atk is 1.3333×."
 harvest,Harvest,"If last item used is a Berry, 50% chance to restore it each end of turn. 100% in Sun."
-healer,Healer,30% chance this Pokemon's ally has its status cured at the end of each turn.
+healer,Healer,50% chance this Pokemon's ally has its status cured at the end of each turn.
 heatproof,Heatproof,Fire damage against this Pokemon is dealt with 1/2 offensive stat; 1/2 burn damage.
 heavy-metal,Heavy Metal,This Pokemon's weight is doubled.
 honey-gather,Honey Gather,No competitive use.
@@ -295,7 +296,7 @@ turboblaze,Turboblaze,This Pokemon's moves and their effects ignore the Abilitie
 unaware,Unaware,This Pokemon ignores other Pokemon's stat stages when taking or doing damage.
 unburden,Unburden,"Speed is doubled on held item loss; boost is lost if it switches, gets new item/Ability."
 unnerve,Unnerve,"While this Pokemon is active, it prevents opposing Pokemon from using their Berries."
-unseen-fist,Unseen Fist,"This Pokemon's contact moves ignore the target's protection, except Max Guard."
+unseen-fist,Unseen Fist,This Pokemon's contact moves ignore a target's protection and deal 1/4 the usual damage.
 vessel-of-ruin,Vessel of Ruin,Active Pokemon without this Ability have their Special Attack multiplied by 0.75.
 victory-star,Victory Star,This Pokemon and its allies' moves have their accuracy multiplied by 1.1.
 vital-spirit,Vital Spirit,This Pokemon cannot fall asleep. Gaining this Ability while asleep cures it.

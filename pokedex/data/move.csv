@@ -83,6 +83,7 @@ cosmic-power,Cosmic Power
 cotton-guard,Cotton Guard
 cotton-spore,Cotton Spore
 counter,Counter
+court-change,Court Change
 covet,Covet
 crabhammer,Crabhammer
 cross-chop,Cross Chop
@@ -104,6 +105,7 @@ discharge,Discharge
 dive,Dive
 double-edge,Double-Edge
 double-hit,Double Hit
+double-shock,Double Shock
 double-team,Double Team
 draco-meteor,Draco Meteor
 dragon-cheer,Dragon Cheer
@@ -117,6 +119,7 @@ drain-punch,Drain Punch
 draining-kiss,Draining Kiss
 drill-peck,Drill Peck
 drill-run,Drill Run
+drum-beating,Drum Beating
 dual-wingbeat,Dual Wingbeat
 dynamic-punch,Dynamic Punch
 earth-power,Earth Power
@@ -180,6 +183,7 @@ gastro-acid,Gastro Acid
 giga-drain,Giga Drain
 giga-impact,Giga Impact
 gigaton-hammer,Gigaton Hammer
+glaive-rush,Glaive Rush
 glare,Glare
 grass-knot,Grass Knot
 grassy-glide,Grassy Glide
@@ -234,6 +238,7 @@ instruct,Instruct
 iron-defense,Iron Defense
 iron-head,Iron Head
 iron-tail,Iron Tail
+jaw-lock,Jaw Lock
 jet-punch,Jet Punch
 kings-shield,King's Shield
 knock-off,Knock Off
@@ -268,8 +273,10 @@ megahorn,Megahorn
 memento,Memento
 metal-burst,Metal Burst
 metal-sound,Metal Sound
+meteor-assault,Meteor Assault
 meteor-beam,Meteor Beam
 meteor-mash,Meteor Mash
+milk-drink,Milk Drink
 minimize,Minimize
 mirror-coat,Mirror Coat
 misty-explosion,Misty Explosion
@@ -290,7 +297,9 @@ night-slash,Night Slash
 no-retreat,No Retreat
 noble-roar,Noble Roar
 nuzzle,Nuzzle
+octolock,Octolock
 outrage,Outrage
+overdrive,Overdrive
 overheat,Overheat
 pain-split,Pain Split
 parabolic-charge,Parabolic Charge
@@ -327,6 +336,7 @@ psychic-terrain,Psychic Terrain
 psycho-cut,Psycho Cut
 psyshield-bash,Psyshield Bash
 psyshock,Psyshock
+pyro-ball,Pyro Ball
 quash,Quash
 quick-attack,Quick Attack
 quick-guard,Quick Guard
@@ -344,6 +354,7 @@ reflect,Reflect
 reflect-type,Reflect Type
 rest,Rest
 reversal,Reversal
+revival-blessing,Revival Blessing
 rising-voltage,Rising Voltage
 roar,Roar
 rock-blast,Rock Blast
@@ -376,6 +387,7 @@ sheer-cold,Sheer Cold
 shell-side-arm,Shell Side Arm
 shell-smash,Shell Smash
 shelter,Shelter
+shift-gear,Shift Gear
 simple-beam,Simple Beam
 sing,Sing
 skill-swap,Skill Swap
@@ -391,6 +403,7 @@ smack-down,Smack Down
 smart-strike,Smart Strike
 snap-trap,Snap Trap
 snarl,Snarl
+snipe-shot,Snipe Shot
 snore,Snore
 snowscape,Snowscape
 soak,Soak
@@ -500,3 +513,4 @@ x-scissor,X-Scissor
 yawn,Yawn
 zap-cannon,Zap Cannon
 zen-headbutt,Zen Headbutt
+zing-zap,Zing Zap
