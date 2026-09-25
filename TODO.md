@@ -20,3 +20,10 @@ Running list of things we want to do. Details live in the linked devlogs.
   [SchemaIteration.md](devlog/SchemaIteration.md) §4 (back up battles, iterate on a
   throwaway DB, commit before dev applies it), and consider the runner and scratch-DB
   proposals in §5 first.
+- [ ] **Mark a battle's result by hand.** Let the user set won/lost at the end of a battle in
+  the GUI, like turn marks. Needed because a recording sometimes ends right after a forfeit,
+  before the defeat message reaches the screen, so the transcript never shows the result.
+  Hand-set results live only in the DB, so they're battle data (include them in
+  `scripts/backup-battles.sh`).
+  - [ ] **Then: detect the forfeit from the video.** Recognise the user pressing the
+    forfeit button in the UI, and set the result automatically.
