@@ -26,6 +26,8 @@ raw_recordings/
 *.sqlite
 *.sqlite3
 data/
+# ...except the pokedex reference CSVs (scripts/export-reference.sh)
+!pokedex/data/
 
 # --- Importer state ---
 .import_ledger.jsonl
@@ -54,3 +56,6 @@ pokedex/ingest/out/
 
 # Showdown checkouts built by pokedex/ingest/export.sh
 pokedex/ingest/.showdown/
+
+# Battle-table dumps from scripts/backup-battles.sh (local, not for git)
+backups/

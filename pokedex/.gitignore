@@ -1,5 +1,5 @@
 /target
-/data
+# data/ holds committed reference CSVs; the old SQLite files stay ignored below.
 *.db
 *.db-wal
 *.db-shm

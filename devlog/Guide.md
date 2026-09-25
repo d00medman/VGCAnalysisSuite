@@ -157,6 +157,24 @@ To regenerate the snapshots from a newer Showdown commit (needs Docker for `node
 "$REPO/pokedex/ingest/export.sh" <showdown-commit-sha>
 ```
 
+### Backups
+
+The reference tables are also committed as CSVs in `pokedex/data/`, one per table, keyed
+by names rather than ids so a diff reads as game changes. Re-export them after any import:
+
+```sh
+URL=postgres://pokedex:pokedex@127.0.0.1:5432/pokedex
+"$REPO/scripts/export-reference.sh" "$URL"          # -> pokedex/data/<table>.csv
+"$REPO/scripts/load-reference.sh" <empty-migrated-db-url>
+```
+
+Battle data (videos, transcripts, hand-made turn marks) exists only in the database.
+Dump it to the gitignored `backups/` before anything risky:
+
+```sh
+"$REPO/scripts/backup-battles.sh" "$URL"            # -> backups/battles-<time>.sql
+```
+
 Postgres listens on `127.0.0.1:5432` (set `POSTGRES_PORT` to change it). The password
 defaults to `pokedex`; set `POSTGRES_PASSWORD` to change it before the volume is first
 created. To open a SQL shell:
