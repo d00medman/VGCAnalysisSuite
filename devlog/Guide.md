@@ -140,11 +140,21 @@ applies pending migrations before each command:
 
 ```sh
 docker compose -f "$REPO/compose.yaml" up -d postgres
-docker compose -f "$REPO/compose.yaml" run --rm pokedex regulation add \
-    --name "Regulation M-A" --effective-from 2026-04-08
-docker compose -f "$REPO/compose.yaml" run --rm -T pokedex import \
-    < "$REPO/pokedex/ingest/out/snapshot.regulation-m-a.json"
 docker compose -f "$REPO/compose.yaml" run --rm pokedex status
+```
+
+The snapshots for every regulation are committed in `pokedex/snapshots/`, each recording
+the Showdown version it came from. To load them all into an empty database, oldest first
+(ingest refuses a snapshot older than one already loaded):
+
+```sh
+"$REPO/scripts/rebuild-pokedex.sh" postgres://pokedex:pokedex@127.0.0.1:5432/pokedex
+```
+
+To regenerate the snapshots from a newer Showdown commit (needs Docker for `node:22`):
+
+```sh
+"$REPO/pokedex/ingest/export.sh" <showdown-commit-sha>
 ```
 
 Postgres listens on `127.0.0.1:5432` (set `POSTGRES_PORT` to change it). The password
