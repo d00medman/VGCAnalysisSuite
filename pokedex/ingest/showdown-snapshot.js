@@ -156,8 +156,10 @@ function abilitiesBySlot(species, warnings) {
  * tagged `9M` (machine). `learn_method` and `level` therefore carry no information
  * here; they stay in the record because the schema is not Champions-specific.
  */
-function learnsetOf(dex, species) {
-  const learnset = dex.species.getLearnsetData(species.id).learnset || {};
+function learnsetOf(dex, species, warnings) {
+  const source = learnsetSource(dex, species);
+  if (source !== species) warnings.inherited.push(`${species.name} <- ${source.name}`);
+  const learnset = dex.species.getLearnsetData(source.id).learnset || {};
   const entries = [];
 
   for (const moveId of Object.keys(learnset)) {
@@ -166,6 +168,22 @@ function learnsetOf(dex, species) {
     entries.push({ move: slug(move.name), method: 'machine' });
   }
   return entries;
+}
+
+/**
+ * The species whose learnset this one uses. Showdown keeps no learnset for most formes:
+ * Megas, in-battle formes (Aegislash-Blade, Mimikyu-Busted) and cosmetic formes
+ * (Vivillon, Alcremie) all learn what the forme they change from, or else their base
+ * species, learns. Reading only the forme's own entry left 124 of them with no moves.
+ * This mirrors `learnsetParent` in Showdown's sim/dex-species.ts, walking up until a
+ * learnset turns up (Floette-Mega -> Floette-Eternal).
+ */
+function learnsetSource(dex, species) {
+  let s = species;
+  while (!dex.species.getLearnsetData(s.id).learnset && s.forme) {
+    s = dex.species.get(s.changesFrom || s.baseSpecies);
+  }
+  return s;
 }
 
 function speciesRecord(dex, species, warnings) {
@@ -187,7 +205,7 @@ function speciesRecord(dex, species, warnings) {
     },
     types: species.types.map(slug), // ordered: index 0 is slot 1
     abilities: abilitiesBySlot(species, warnings),
-    learnset: learnsetOf(dex, species),
+    learnset: learnsetOf(dex, species, warnings),
   };
 }
 
@@ -399,7 +417,9 @@ function main() {
 
   const dex = Dex.mod(spec.mod);
   const warnings = [];
+  warnings.inherited = [];
   const snapshot = buildSnapshot(dex, spec, source, warnings);
+  const empty = snapshot.pokemon.filter((p) => p.learnset && !p.learnset.length).map((p) => p.name);
 
   fs.mkdirSync(outDir, { recursive: true });
   write(outDir, `snapshot.${slug(spec.regulation)}.json`, snapshot);
@@ -411,6 +431,8 @@ function main() {
   console.log(`  abilities ${snapshot.abilities.length}`);
   console.log(`  items     ${snapshot.items.length}`);
   console.log(`  learnset  ${snapshot.pokemon.reduce((n, p) => n + (p.learnset ? p.learnset.length : 0), 0)}`);
+  console.log(`  learnset from another forme: ${warnings.inherited.length} (${warnings.inherited.join(', ')})`);
+  if (empty.length) console.log(`  WARNING no moves at all: ${empty.join(', ')}`);
   for (const w of warnings) console.log(`  note: ${w}`);
 }
 
