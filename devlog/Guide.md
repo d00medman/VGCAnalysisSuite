@@ -117,13 +117,13 @@ The same engine the web app uses, without the containers.
 cargo build --release --manifest-path "$REPO/analyzer/Cargo.toml"
 
 # transcribe a recording; progress goes to stderr, the transcript to stdout
-"$REPO/analyzer/target/release/analyzer" transcript "$REPO/raw_recordings/sunroom_7_15_2026.MP4"
+"$REPO/analyzer/target/release/analyzer" transcript "$REPO/raw_recordings/Batch0_2026-08-28/2026-07-15_13-29-36_sunroom.MP4"
 
 # save to a file (progress stays on the terminal)
-"$REPO/analyzer/target/release/analyzer" transcript "$REPO/raw_recordings/sunroom_7_15_2026.MP4" > sunroom.txt
+"$REPO/analyzer/target/release/analyzer" transcript "$REPO/raw_recordings/Batch0_2026-08-28/2026-07-15_13-29-36_sunroom.MP4" > sunroom.txt
 
 # a slice: start at 190s, 25s long
-"$REPO/analyzer/target/release/analyzer" transcript "$REPO/raw_recordings/sunroom_7_15_2026.MP4" --ss 190 --t 25
+"$REPO/analyzer/target/release/analyzer" transcript "$REPO/raw_recordings/Batch0_2026-08-28/2026-07-15_13-29-36_sunroom.MP4" --ss 190 --t 25
 ```
 
 Flags:
