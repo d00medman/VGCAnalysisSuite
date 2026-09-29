@@ -26,6 +26,8 @@ use clap::Parser;
 use gphoto2::Camera;
 use ledger::{Entry, Ledger, LEDGER_NAME};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Parser, Debug)]
@@ -237,12 +239,35 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
+    // Ctrl+C during the transfer finishes the file in flight rather than
+    // throwing it away: the first press only asks the loop to stop before the
+    // next file; a second press aborts on the spot (the `.part` is cleaned up
+    // on the next run). Installed only now -- before this point nothing has
+    // been written, so the default kill-immediately behaviour is already safe.
+    let stop = Arc::new(AtomicBool::new(false));
+    {
+        let stop = Arc::clone(&stop);
+        ctrlc::set_handler(move || {
+            if stop.swap(true, Ordering::SeqCst) {
+                eprintln!("\nSecond Ctrl+C: aborting now. The partial file is discarded on the next run.");
+                std::process::exit(130);
+            }
+            eprintln!("\nCtrl+C: finishing the current file, then stopping. Press Ctrl+C again to abort now.");
+        })
+        .context("installing Ctrl+C handler")?;
+    }
+
     let start = Instant::now();
     let mut done_bytes = 0u64;
     let mut ok = 0usize;
     let mut failed = 0usize;
+    let mut stopped_early = 0usize;
 
     for (i, (file, size, mtime)) in queue.iter().enumerate() {
+        if stop.load(Ordering::SeqCst) {
+            stopped_early = total - i;
+            break;
+        }
         let elapsed = start.elapsed().as_secs();
         println!();
         println!(
@@ -278,13 +303,23 @@ fn main() -> Result<()> {
         }
     }
 
+    // Close the PTP session now: the exits below skip destructors.
+    drop(camera);
+
     let elapsed = start.elapsed().as_secs();
     println!();
     println!("========================================");
-    println!("Transfer complete");
+    if stopped_early > 0 {
+        println!("Stopped by Ctrl+C");
+    } else {
+        println!("Transfer complete");
+    }
     println!();
     println!("Downloaded: {ok}");
     println!("Failed:     {failed}");
+    if stopped_early > 0 {
+        println!("Not yet:    {stopped_early} (run again to continue)");
+    }
     println!("Data:       {}", human_size(done_bytes));
     println!("Elapsed:    {}", hms(elapsed));
     println!();
@@ -294,6 +329,9 @@ fn main() -> Result<()> {
 
     if failed > 0 {
         std::process::exit(1);
+    }
+    if stopped_early > 0 {
+        std::process::exit(130);
     }
     Ok(())
 }

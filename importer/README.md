@@ -111,6 +111,11 @@ is not needed to *run* it.
 ./target/release/pokemon-import --ext mp4 --ext mov
 ```
 
+Ctrl+C during the transfer finishes the file in flight, records it, releases the
+phone and exits (status 130); a second Ctrl+C aborts at once, and the partial
+`.part` is discarded on the next run. Either way, re-running continues where it
+stopped.
+
 `--force` ignores the ledger entirely. `--no-evict` skips killing
 gvfs/gthumb/shotwell before claiming the device. Exits non-zero if any file
 failed.
