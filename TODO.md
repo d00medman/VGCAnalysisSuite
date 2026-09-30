@@ -19,3 +19,21 @@ Running list of things we want to do. Details live in the linked devlogs.
   `scripts/backup-battles.sh`).
   - [ ] **Then: detect the forfeit from the video.** Recognise the user pressing the
     forfeit button in the UI, and set the result automatically.
+- [ ] **Damage calculator page.** A page in the web GUI that works out a move's damage from
+  attacker to defender, using the pokedex's stats, types, moves and type chart for the
+  selected regulation. Level-50 stats come from base stat + SP + nature (IVs are fixed at
+  31 in Champions). Once teams are logged (below), let it fill in the user's own Pokémon.
+- [ ] **Sprite data.** Add sprites to the pokedex so the GUI can show them. The pokedex's
+  names are PokeAPI-style slugs, so it can join to PokeAPI's sprites without a lookup
+  table (see the naming note in `pokedex/ingest/showdown-snapshot.js`).
+- [ ] **Identify Pokémon on screen from pixels.** Optional, and possibly a lot of work.
+  Recognise which Pokémon are on screen from the video frames, not just from the message
+  text. Would likely build on the sprite data and the analyzer's approach of matching
+  images against stored templates.
+- [ ] **Trainers' Pokémon: log teams.** A table of the trainer's own Pokémon, so a trainer can
+  log their teams: each Pokémon's moves and stat distribution (SP spread and nature), plus
+  ability and item. Depends on the trainer table above. It's user-entered data that can't be
+  rebuilt, so it belongs with the battle data in `scripts/backup-battles.sh`.
+- [ ] **Store data inferred from transcripts.** Work out structured facts from transcript lines
+  (which Pokémon appeared, which moves they used, and what that reveals, such as an
+  opponent's moves or item), and store them in the database, linked to the battle.
