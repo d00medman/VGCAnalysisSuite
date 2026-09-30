@@ -121,7 +121,8 @@ reference CSVs round-trip identically through `export-reference.sh` and
    explicitly, and stamp images with the git commit and a dirty flag (retro follow-ups
    2–3). Rebuilding containers only from committed `main` closes lesson 1 without tooling.
 6. **Move `regulation.notes` into `rebuild-pokedex.sh`** (or the snapshot), so the dev DB
-   and a rebuild agree exactly.
+   and a rebuild agree exactly. **Done 2026-09-30:** notes are in the script's
+   regulation list, and dev was rebuilt from it.
 
 Retro follow-ups 4 (reference CSVs, battle backups) and 5 (committed snapshots, bootstrap
 script) are done: `f5caa73`, `2af02e7`.

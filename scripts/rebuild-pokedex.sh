@@ -21,11 +21,12 @@ else
 fi
 unset POKEDEX_AUTO_MIGRATE
 
-# Oldest first. Dates are the in-game start of each ranked season.
+# Oldest first. Dates are the in-game start of each ranked season. Notes live here, not
+# only in a database, so every rebuild writes the same regulation.csv.
 regulations=(
-  "Regulation M-A|2026-04-08|snapshot.regulation-m-a.json"
-  "Regulation M-B|2026-06-17|snapshot.regulation-m-b.json"
-  "Regulation M-C|2026-09-09|snapshot.regulation-m-c.json"
+  "Regulation M-A|2026-04-08|snapshot.regulation-m-a.json|"
+  "Regulation M-B|2026-06-17|snapshot.regulation-m-b.json|ran 2026-06-17 to 2026-09-09"
+  "Regulation M-C|2026-09-09|snapshot.regulation-m-c.json|"
 )
 
 "${pokedex[@]}" migrate
@@ -35,12 +36,12 @@ if [[ -n $("${pokedex[@]}" regulation list) ]]; then
 fi
 
 for entry in "${regulations[@]}"; do
-  IFS='|' read -r name from _ <<<"$entry"
-  "${pokedex[@]}" regulation add --name "$name" --effective-from "$from"
+  IFS='|' read -r name from _ notes <<<"$entry"
+  "${pokedex[@]}" regulation add --name "$name" --effective-from "$from" ${notes:+--notes "$notes"}
 done
 
 for entry in "${regulations[@]}"; do
-  IFS='|' read -r name _ file <<<"$entry"
+  IFS='|' read -r name _ file _ <<<"$entry"
   echo
   "${pokedex[@]}" import --regulation "$name" --file "$snapshots/$file"
 done
