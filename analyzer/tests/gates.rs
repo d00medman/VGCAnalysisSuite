@@ -36,7 +36,8 @@ fn every_labelled_message_is_one_text_row() {
 #[test]
 fn scenery_at_the_margin_is_not_text() {
     // Pyroar's tail tuft sits on the message margin during sunroom's 03:16–03:28 move
-    // selection; its specular rim produced a burst of `???` messages.
+    // selection; its specular rim produced a burst of `???` messages. Farigiraf's legs
+    // (starchu, scrafty-htr) and Kingambit's swirl (starchu) do the same between messages.
     let fixtures = pngs(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/scenery"));
     assert!(!fixtures.is_empty());
     let leaked: Vec<_> = fixtures

@@ -63,6 +63,13 @@ const MESSAGE_BASELINE_TOLERANCE: i32 = 6;
 /// characters are taller still, so this holds for any script. Fragments of a specular rim
 /// never get this tall: Pyroar's tail pieces at sunroom 03:16–03:28 peaked at 16px.
 const MIN_TALLEST_GLYPH: u32 = 24;
+/// A text row has at least this many glyphs. Every battle message names something and says
+/// what happened: the shortest seen across 103 recordings is `Go! Nala!` (8 glyphs), and a
+/// non-Latin name only ever appears inside such a message, so this holds for any script.
+/// Scenery that reaches the margin between messages makes rows of 3–4: Farigiraf's legs
+/// (1–4px wide slivers, 45–60px tall) at starchu 04:23–05:23 and scrafty-htr 05:04–08:47, and
+/// Kingambit's swirl at starchu 05:12. Of Batch 0's 139 unreadable lines, 110 had 3–4 glyphs.
+const MIN_ROW_GLYPHS: usize = 6;
 
 /// Binary mask of one glyph, cropped to its bounding box. Coordinates are within the ROI.
 #[derive(Clone, Debug)]
@@ -302,8 +309,8 @@ fn rows(glyphs: Vec<Glyph>) -> Vec<Row> {
 }
 
 /// Rows of message text: left-aligned at the message margin, sitting on the message
-/// baseline, tall enough to contain a real character, and truncated at the first gap too
-/// wide to be a space. All of these are geometric, never "does it match the atlas" — see
+/// baseline, long enough and tall enough to be a message, and truncated at the first gap
+/// too wide to be a space. All of these are geometric, never "does it match the atlas" — see
 /// the module note on non-Latin scripts.
 pub fn text_rows(img: &Image) -> Vec<Row> {
     // A row's first glyph starts on an ink pixel inside the margin band, so with no ink there
@@ -325,7 +332,7 @@ pub fn text_rows(img: &Image) -> Vec<Row> {
             r.glyphs.truncate(cut);
             r
         })
-        .filter(|r| r.glyphs.len() >= 3)
+        .filter(|r| r.glyphs.len() >= MIN_ROW_GLYPHS)
         .filter(|r| (r.baseline - MESSAGE_BASELINE).abs() <= MESSAGE_BASELINE_TOLERANCE)
         .filter(|r| r.glyphs.iter().map(|g| g.h).max().unwrap_or(0) >= MIN_TALLEST_GLYPH)
         .collect()
