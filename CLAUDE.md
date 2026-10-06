@@ -1,5 +1,11 @@
 # Working in this repo
 
+## Specs
+- Features are spec-driven. Read `specs/README.md` for the loop, and `specs/vision.md` for
+  what the product is.
+- Non-trivial work needs an approved `specs/NNN-name/spec.md` before implementation starts.
+- If the code has to diverge from a spec, update the spec first and tell the user.
+
 ## Parallel Claude sessions
 - Before running any git command that changes the branch or commits, check `ListAgents` and
   `git status` for other sessions. The repo root is one shared working tree, so switching
