@@ -45,3 +45,26 @@ crops/sunroom_7_15_2026_0354.617.png	The opposing STAR PLTNM used Darkest Lariat
 crops/sunroom_7_15_2026_0407.453.png	Venusaur used Earth Power!
 crops/sunroom_7_15_2026_0468.393.png	Farigiraf used Thunderbolt!
 crops/sunroom_7_15_2026_0487.462.png	The twisted dimensions returned to normal!
+# 2026-10-06: missing glyphs (U, Z, J, é, digits 0 2 3 5) and a second `!` shape, from
+# Batch 0 lines the report flagged unclear. Harvested with --unknown-only.
+crops/2026-06-30_20-49-20_scrafty-htr_0037.737.png	Staraptor used U-turn!
+crops/2026-06-30_20-49-20_scrafty-htr_0101.943.png	The Pokémon was hit 2 times!
+crops/2026-07-08_10-53-25_MYNT6468_0113.110.png	The opposing Raichu used Zap Cannon!
+crops/2026-07-08_12-18-52_ETHZ3023_0367.333.png	Sneasler used Poison Jab!
+crops/2026-07-08_14-47-17_IZOZ8569_0303.128.png	Sneasler used Poison Jab!
+crops/2026-07-09_12-28-52_YHYK6163_0193.018.png	Sneasler used Poison Jab!
+crops/2026-08-10_11-24-14_MWGX4276_0122.345.png	All Pokémon that heard the song will faint in three turns!
+crops/2026-08-10_11-24-14_MWGX4276_0132.645.png	The opposing Sneasler’s perish count fell to 3!
+crops/2026-08-10_11-24-14_MWGX4276_0138.197.png	The opposing Scizor’s perish count fell to 3!
+crops/2026-08-10_11-24-14_MWGX4276_0311.362.png	The opposing Scizor’s perish count fell to 0!
+crops/2026-08-11_22-18-34_starchu_0380.952.png	Raichu used Zap Cannon!
+crops/2026-08-12_17-26-15_NYEO6883_0129.478.png	Raichu used Zap Cannon!
+crops/2026-08-13_18-39-58_BFHX1761_0173.450.png	The Pokémon was hit 2 times!
+crops/2026-08-18_17-16-02_SSGR9802_0065.657.png	The Pokémon was hit 5 times!
+crops/2026-08-20_10-02-29_OOTX4341_0088.108.png	Meowscarada used U-turn!
+crops/2026-08-20_10-07-12_BLJZ8462_0030.903.png	Meowscarada used U-turn!
+crops/2026-08-20_20-59-39_KIRA5039_0068.140.png	The Pokémon was hit 3 times!
+crops/2026-08-21_08-43-22_AWJD5918_0100.493.png	The Pokémon was hit 3 times!
+crops/2026-08-26_19-50-49_DLJQ5631_0280.675.png	Charizard has Mega Evolved into Mega Charizard!
+crops/2026-08-26_19-50-49_DLJQ5631_0406.920.png	The Pokémon was hit 2 times!
+crops/2026-08-26_20-06-15_VUMC3174_0613.540.png	Charizard has Mega Evolved into Mega Charizard!
