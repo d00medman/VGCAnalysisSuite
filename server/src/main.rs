@@ -10,9 +10,15 @@
 //! a live snapshot of the frame being read (`<id>.live.jpg`) while it runs. Browsers that can
 //! play HEVC use the original directly. All three are served with HTTP Range support so the
 //! player can seek.
+//!
+//! Every video and battle belongs to a trainer (`auth`); routes over them act as the
+//! request's trainer and answer 404 for anyone else's.
 
+mod auth;
 mod dex;
 mod store;
+#[cfg(test)]
+mod tests;
 
 use analyzer::atlas::Atlas;
 use analyzer::episode::Message;
@@ -31,7 +37,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use store::{now_ms, Status, Store, Video};
+use store::{now_ms, Status, Store, Trainer, Video};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
 use tower::ServiceExt;
@@ -55,6 +61,22 @@ struct AppState {
     live: Mutex<HashMap<String, Arc<Mutex<Live>>>>,
     /// One transcription at a time.
     worker: Semaphore,
+    /// The dev auth stub (`DEV_AUTH=1`): act as a trainer chosen by cookie.
+    dev_auth: bool,
+}
+
+impl AppState {
+    fn new(store: Store, atlas: Arc<Atlas>, ffmpeg: PathBuf, video_dir: PathBuf, dev_auth: bool) -> Self {
+        AppState {
+            store,
+            atlas,
+            ffmpeg,
+            video_dir,
+            live: Mutex::new(HashMap::new()),
+            worker: Semaphore::new(1),
+            dev_auth,
+        }
+    }
 }
 
 type Shared = Arc<AppState>;
@@ -95,6 +117,7 @@ async fn main() -> anyhow::Result<()> {
         .map(PathBuf::from)
         .unwrap_or_else(|| analyzer::decode::ffmpeg_path(None));
     let atlas_path = PathBuf::from(env_or("ANALYZER_ATLAS", analyzer::DEFAULT_ATLAS));
+    let dev_auth = std::env::var("DEV_AUTH").is_ok_and(|v| v == "1");
 
     tokio::fs::create_dir_all(&video_dir)
         .await
@@ -104,21 +127,25 @@ async fn main() -> anyhow::Result<()> {
 
     // A restart kills any in-flight decode; say so rather than leaving it "transcribing".
     store.fail_interrupted("interrupted: server restarted during transcription").await?;
+    if dev_auth {
+        store.ensure_dev_trainer().await?;
+    }
 
     eprintln!("atlas  {} ({} templates)", atlas_path.display(), atlas.templates.len());
     eprintln!("ffmpeg {}", ffmpeg.display());
     eprintln!("videos {}", video_dir.display());
+    eprintln!("auth   {}", if dev_auth { "DEV_AUTH stub: trainer chosen by cookie" } else { "none: battle routes answer 401" });
 
-    let state = Arc::new(AppState {
-        store,
-        atlas,
-        ffmpeg,
-        video_dir,
-        live: Mutex::new(HashMap::new()),
-        worker: Semaphore::new(1),
-    });
+    let state = Arc::new(AppState::new(store, atlas, ffmpeg, video_dir, dev_auth));
+    let listener = tokio::net::TcpListener::bind(&bind).await?;
+    eprintln!("listening on {bind}");
+    axum::serve(listener, app(state)).await?;
+    Ok(())
+}
 
-    let app = Router::new()
+fn app(state: Shared) -> Router {
+    let dev_auth = state.dev_auth;
+    Router::new()
         .route("/api/health", get(|| async { "ok" }))
         .route("/api/videos", get(list_videos))
         .route(
@@ -133,12 +160,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/videos/:id/live.jpg", get(serve_snapshot))
         .route("/api/videos/:id/lines/:line/turn-end", put(set_turn_end))
         .merge(dex::routes())
-        .with_state(state);
-
-    let listener = tokio::net::TcpListener::bind(&bind).await?;
-    eprintln!("listening on {bind}");
-    axum::serve(listener, app).await?;
-    Ok(())
+        .merge(auth::routes(dev_auth))
+        .with_state(state)
 }
 
 fn preview_path(s: &AppState, id: &str) -> PathBuf {
@@ -160,15 +183,15 @@ async fn annotate(s: &AppState, mut v: Video) -> Video {
     v
 }
 
-/// Look up a video by the id in the URL. Paths on disk are only ever built from ids that
-/// exist in the database, never from the raw URL segment.
-async fn lookup(s: &AppState, id: &str) -> ApiResult<Video> {
-    Ok(s.store.get(id).await?.ok_or_else(|| not_found(id))?)
+/// Look up one of the trainer's videos by the id in the URL. Paths on disk are only ever
+/// built from ids that exist in the database, never from the raw URL segment.
+async fn lookup(s: &AppState, id: &str, t: &Trainer) -> ApiResult<Video> {
+    Ok(s.store.get(id, t.id).await?.ok_or_else(|| not_found(id))?)
 }
 
-async fn list_videos(State(s): State<Shared>) -> ApiResult<Json<Vec<Video>>> {
+async fn list_videos(State(s): State<Shared>, t: Trainer) -> ApiResult<Json<Vec<Video>>> {
     let mut out = Vec::new();
-    for v in s.store.list().await? {
+    for v in s.store.list(t.id).await? {
         out.push(annotate(&s, v).await);
     }
     Ok(Json(out))
@@ -190,18 +213,33 @@ async fn serve_file(path: PathBuf, req: Request, no_store: bool) -> ApiResult<Re
     Ok(res)
 }
 
-async fn serve_original(State(s): State<Shared>, Path(id): Path<String>, req: Request) -> ApiResult<Response> {
-    let v = lookup(&s, &id).await?;
+async fn serve_original(
+    State(s): State<Shared>,
+    t: Trainer,
+    Path(id): Path<String>,
+    req: Request,
+) -> ApiResult<Response> {
+    let v = lookup(&s, &id, &t).await?;
     serve_file(s.video_dir.join(&v.file), req, false).await
 }
 
-async fn serve_preview(State(s): State<Shared>, Path(id): Path<String>, req: Request) -> ApiResult<Response> {
-    let v = lookup(&s, &id).await?;
+async fn serve_preview(
+    State(s): State<Shared>,
+    t: Trainer,
+    Path(id): Path<String>,
+    req: Request,
+) -> ApiResult<Response> {
+    let v = lookup(&s, &id, &t).await?;
     serve_file(preview_path(&s, &v.id), req, false).await
 }
 
-async fn serve_snapshot(State(s): State<Shared>, Path(id): Path<String>, req: Request) -> ApiResult<Response> {
-    let v = lookup(&s, &id).await?;
+async fn serve_snapshot(
+    State(s): State<Shared>,
+    t: Trainer,
+    Path(id): Path<String>,
+    req: Request,
+) -> ApiResult<Response> {
+    let v = lookup(&s, &id, &t).await?;
     serve_file(snapshot_path(&s, &v.id), req, true).await
 }
 
@@ -213,6 +251,7 @@ struct UploadQuery {
 /// `POST /api/videos?name=<filename>` with the raw file as the request body.
 async fn upload_video(
     State(s): State<Shared>,
+    t: Trainer,
     Query(q): Query<UploadQuery>,
     body: Body,
 ) -> ApiResult<(StatusCode, Json<Video>)> {
@@ -259,7 +298,7 @@ async fn upload_video(
         error: None,
         has_preview: false,
     };
-    s.store.create(&video).await?;
+    s.store.create(&video, t.id).await?;
     eprintln!("uploaded {} ({} bytes) as {}", video.name, video.size, video.id);
     Ok((StatusCode::CREATED, Json(video)))
 }
@@ -286,12 +325,17 @@ struct VideoDetail {
     messages: serde_json::Value,
 }
 
-async fn get_video(State(s): State<Shared>, Path(id): Path<String>) -> ApiResult<Json<VideoDetail>> {
-    let video = annotate(&s, lookup(&s, &id).await?).await;
+async fn get_video(
+    State(s): State<Shared>,
+    t: Trainer,
+    Path(id): Path<String>,
+) -> ApiResult<Json<VideoDetail>> {
+    // Ownership is checked before the live map is read, so it can't leak another's progress.
+    let video = annotate(&s, lookup(&s, &id, &t).await?).await;
     let live = s.live.lock().unwrap().get(&id).map(|l| l.lock().unwrap().clone());
     let messages = match (&live, video.status) {
         (Some(l), _) => serde_json::to_value(&l.messages).context("encoding messages")?,
-        (None, Status::Done) => s.store.transcript(&id).await?.unwrap_or_default(),
+        (None, Status::Done) => s.store.transcript(&id, t.id).await?.unwrap_or_default(),
         _ => serde_json::Value::Array(vec![]),
     };
     Ok(Json(VideoDetail { video, live, messages }))
@@ -306,10 +350,11 @@ struct TurnEnd {
 /// transcript line as the last line of its turn.
 async fn set_turn_end(
     State(s): State<Shared>,
+    t: Trainer,
     Path((id, line)): Path<(String, i64)>,
     Json(body): Json<TurnEnd>,
 ) -> ApiResult<StatusCode> {
-    if s.store.set_turn_end(&id, line, body.ends_turn).await? {
+    if s.store.set_turn_end(&id, line, t.id, body.ends_turn).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError(StatusCode::NOT_FOUND, format!("no line {line} in video {id}")))
@@ -318,9 +363,10 @@ async fn set_turn_end(
 
 async fn start_transcription(
     State(s): State<Shared>,
+    t: Trainer,
     Path(id): Path<String>,
 ) -> ApiResult<(StatusCode, Json<Video>)> {
-    let video = s.store.get(&id).await?.ok_or_else(|| not_found(&id))?;
+    let video = lookup(&s, &id, &t).await?;
     let live = Arc::new(Mutex::new(Live::default()));
     {
         let mut map = s.live.lock().unwrap();
@@ -329,15 +375,19 @@ async fn start_transcription(
         }
         map.insert(id.clone(), Arc::clone(&live));
     }
-    let transcript_id = match s.store.queue(&id).await {
-        Ok(t) => t,
+    let transcript_id = match s.store.queue(&id, t.id).await {
+        Ok(Some(run)) => run,
+        Ok(None) => {
+            s.live.lock().unwrap().remove(&id);
+            return Err(not_found(&id));
+        }
         Err(e) => {
             s.live.lock().unwrap().remove(&id);
             return Err(e.into());
         }
     };
     tokio::spawn(run_job(Arc::clone(&s), video.clone(), transcript_id, live));
-    let video = s.store.get(&id).await?.ok_or_else(|| not_found(&id))?;
+    let video = lookup(&s, &id, &t).await?;
     Ok((StatusCode::ACCEPTED, Json(video)))
 }
 

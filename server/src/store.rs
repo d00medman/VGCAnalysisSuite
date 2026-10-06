@@ -5,6 +5,10 @@
 //! is current), and one `transcript_line` row per message. `turn_end` marks the line
 //! each turn ends on (`0007_turns.sql`). The API still speaks in videos: a video's status
 //! is its newest run's status.
+//!
+//! Every video and battle belongs to a `trainer` (`0008_trainers.sql`). Each method that
+//! reads or changes them takes the acting trainer's id and filters on it, so another
+//! trainer's rows look the same as rows that don't exist.
 
 use analyzer::episode::Message;
 use anyhow::{Context, Result};
@@ -34,6 +38,23 @@ impl Status {
         }
     }
 }
+
+/// An account. Owns videos, battles and everything under them.
+#[derive(Clone, Debug, Serialize)]
+pub struct Trainer {
+    pub id: i64,
+    pub display_name: String,
+    /// `user` or `admin`.
+    pub role: String,
+}
+
+impl Trainer {
+    fn from_row(r: &Row) -> Trainer {
+        Trainer { id: r.get(0), display_name: r.get(1), role: r.get(2) }
+    }
+}
+
+const TRAINER_SELECT: &str = "SELECT id, display_name, role FROM trainer";
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Video {
@@ -149,45 +170,95 @@ impl Store {
         Ok(c.query_opt(sql, params).await?.map(|r| r.get(0)))
     }
 
-    /// Record an upload: its video row and the battle it holds.
-    pub async fn create(&self, v: &Video) -> Result<()> {
+    pub async fn trainer(&self, id: i64) -> Result<Option<Trainer>> {
+        let c = self.client().await?;
+        let sql = format!("{TRAINER_SELECT} WHERE id = $1");
+        Ok(c.query_opt(&sql, &[&id]).await?.as_ref().map(Trainer::from_row))
+    }
+
+    /// Every trainer, oldest first.
+    pub async fn trainers(&self) -> Result<Vec<Trainer>> {
+        let c = self.client().await?;
+        let sql = format!("{TRAINER_SELECT} ORDER BY id");
+        Ok(c.query(&sql, &[]).await?.iter().map(Trainer::from_row).collect())
+    }
+
+    pub async fn create_trainer(&self, display_name: &str, role: &str) -> Result<Trainer> {
+        let c = self.client().await?;
+        let row = c
+            .query_one(
+                "INSERT INTO trainer (display_name, role) VALUES ($1, $2)
+                 RETURNING id, display_name, role",
+                &[&display_name, &role],
+            )
+            .await?;
+        Ok(Trainer::from_row(&row))
+    }
+
+    /// The oldest admin: who the dev stub acts as when no trainer is selected.
+    pub async fn default_trainer(&self) -> Result<Option<Trainer>> {
+        let c = self.client().await?;
+        let sql = format!("{TRAINER_SELECT} WHERE role = 'admin' ORDER BY id LIMIT 1");
+        Ok(c.query_opt(&sql, &[]).await?.as_ref().map(Trainer::from_row))
+    }
+
+    /// Dev stub only: make sure there is an admin to act as. A fresh database has no
+    /// trainers, since 0008 only creates one to own existing data.
+    pub async fn ensure_dev_trainer(&self) -> Result<()> {
+        let c = self.client().await?;
+        c.execute(
+            "INSERT INTO trainer (display_name, role) SELECT 'Dev', 'admin'
+             WHERE NOT EXISTS (SELECT 1 FROM trainer WHERE role = 'admin')",
+            &[],
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Record an upload: its video row and the battle it holds, both owned by `trainer_id`.
+    pub async fn create(&self, v: &Video, trainer_id: i64) -> Result<()> {
         let mut c = self.client().await?;
         let tx = c.transaction().await?;
         tx.execute(
-            "INSERT INTO video (id, name, file, size_bytes, uploaded_at)
-             VALUES ($1, $2, $3, $4, to_timestamp($5::bigint / 1000.0))",
-            &[&v.id, &v.name, &v.file, &(v.size as i64), &v.uploaded_at],
+            "INSERT INTO video (id, name, file, size_bytes, uploaded_at, trainer_id)
+             VALUES ($1, $2, $3, $4, to_timestamp($5::bigint / 1000.0), $6)",
+            &[&v.id, &v.name, &v.file, &(v.size as i64), &v.uploaded_at, &trainer_id],
         )
         .await?;
-        tx.execute("INSERT INTO battle (video_id) VALUES ($1)", &[&v.id]).await?;
+        tx.execute(
+            "INSERT INTO battle (video_id, trainer_id) VALUES ($1, $2)",
+            &[&v.id, &trainer_id],
+        )
+        .await?;
         tx.commit().await?;
         Ok(())
     }
 
-    pub async fn get(&self, id: &str) -> Result<Option<Video>> {
+    pub async fn get(&self, id: &str, trainer_id: i64) -> Result<Option<Video>> {
         let c = self.client().await?;
-        let sql = format!("{VIDEO_SELECT} WHERE v.id = $1");
-        Ok(c.query_opt(&sql, &[&id]).await?.as_ref().map(Video::from_row))
+        let sql = format!("{VIDEO_SELECT} WHERE v.id = $1 AND v.trainer_id = $2");
+        Ok(c.query_opt(&sql, &[&id, &trainer_id]).await?.as_ref().map(Video::from_row))
     }
 
-    /// Every video, newest first.
-    pub async fn list(&self) -> Result<Vec<Video>> {
+    /// The trainer's videos, newest first.
+    pub async fn list(&self, trainer_id: i64) -> Result<Vec<Video>> {
         let c = self.client().await?;
-        let sql = format!("{VIDEO_SELECT} ORDER BY v.uploaded_at DESC");
-        Ok(c.query(&sql, &[]).await?.iter().map(Video::from_row).collect())
+        let sql = format!("{VIDEO_SELECT} WHERE v.trainer_id = $1 ORDER BY v.uploaded_at DESC");
+        Ok(c.query(&sql, &[&trainer_id]).await?.iter().map(Video::from_row).collect())
     }
 
-    /// Start a new transcription run for a video, queued. Returns the run's id.
-    pub async fn queue(&self, video_id: &str) -> Result<i64> {
+    /// Start a new transcription run for a video, queued. Returns the run's id, or `None`
+    /// if the trainer has no such video.
+    pub async fn queue(&self, video_id: &str, trainer_id: i64) -> Result<Option<i64>> {
         let c = self.client().await?;
         let row = c
-            .query_one(
+            .query_opt(
                 "INSERT INTO transcript (battle_id)
-                 SELECT id FROM battle WHERE video_id = $1 RETURNING id",
-                &[&video_id],
+                 SELECT id FROM battle WHERE video_id = $1 AND trainer_id = $2 RETURNING id",
+                &[&video_id, &trainer_id],
             )
             .await?;
-        Ok(row.get(0))
+        Ok(row.map(|r| r.get(0)))
     }
 
     pub async fn start(&self, transcript_id: i64) -> Result<()> {
@@ -251,7 +322,7 @@ impl Store {
 
     /// The newest finished transcript's lines, in order, shaped like `Message` plus each
     /// line's `id` and whether a turn ends on it.
-    pub async fn transcript(&self, video_id: &str) -> Result<Option<serde_json::Value>> {
+    pub async fn transcript(&self, video_id: &str, trainer_id: i64) -> Result<Option<serde_json::Value>> {
         let c = self.client().await?;
         let row = c
             .query_opt(
@@ -261,28 +332,34 @@ impl Store {
                           'ends_turn', te.line_id IS NOT NULL) ORDER BY l.seq)
                           FILTER (WHERE l.id IS NOT NULL), '[]')
                  FROM (SELECT t.id FROM transcript t JOIN battle b ON b.id = t.battle_id
-                       WHERE b.video_id = $1 AND t.status = 'done'
+                       WHERE b.video_id = $1 AND b.trainer_id = $2 AND t.status = 'done'
                        ORDER BY t.id DESC LIMIT 1) latest
                  LEFT JOIN transcript_line l ON l.transcript_id = latest.id
                  LEFT JOIN turn_end te ON te.line_id = l.id
                  GROUP BY latest.id",
-                &[&video_id],
+                &[&video_id, &trainer_id],
             )
             .await?;
         Ok(row.map(|r| r.get(0)))
     }
 
     /// Mark or unmark `line_id` as the last line of its turn. The line must belong to one
-    /// of `video_id`'s transcripts; returns false if it does not.
-    pub async fn set_turn_end(&self, video_id: &str, line_id: i64, ends_turn: bool) -> Result<bool> {
+    /// of `video_id`'s transcripts, and the video to the trainer; returns false if not.
+    pub async fn set_turn_end(
+        &self,
+        video_id: &str,
+        line_id: i64,
+        trainer_id: i64,
+        ends_turn: bool,
+    ) -> Result<bool> {
         let c = self.client().await?;
         let owned = c
             .query_opt(
                 "SELECT 1 FROM transcript_line l
                  JOIN transcript t ON t.id = l.transcript_id
                  JOIN battle b ON b.id = t.battle_id
-                 WHERE l.id = $1 AND b.video_id = $2",
-                &[&line_id, &video_id],
+                 WHERE l.id = $1 AND b.video_id = $2 AND b.trainer_id = $3",
+                &[&line_id, &video_id, &trainer_id],
             )
             .await?
             .is_some();

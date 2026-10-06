@@ -50,6 +50,7 @@ psql -q -1 <"$backup" >/dev/null
 
 echo "scratch DB at $url"
 psql -tAc "SELECT max(version) FROM schema_migrations" | sed 's/^/schema version /'
-for t in video battle transcript transcript_line turn_end; do
-  printf '%-16s %s\n' "$t" "$(psql -tAc "SELECT count(*) FROM $t")"
+# trainer only exists from schema 8 on.
+for t in trainer video battle transcript transcript_line turn_end; do
+  printf '%-16s %s\n' "$t" "$(psql -tAc "SELECT count(*) FROM $t" 2>/dev/null || echo -)"
 done

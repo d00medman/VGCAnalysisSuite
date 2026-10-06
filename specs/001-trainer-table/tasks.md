@@ -11,17 +11,17 @@ its step is done. Work happens on branch `trainer`, in `../pokemon_recordings-tr
 - [x] 3. **Migration `0008_trainers.sql`** and its line in `migrate.rs`. Iterate against the
   scratch DB.
   Check: criterion 1, video and battle counts per trainer.
-- [ ] 4. **Server test harness.** Schema-per-test, and a `Router` built by a function.
+- [x] 4. **Server test harness.** Schema-per-test, and a `Router` built by a function.
   Check: one smoke test passes against `/api/health`.
-- [ ] 5. **Store:** trainer queries, `ensure_dev_trainer`, and `trainer_id` on every
+- [x] 5. **Store:** trainer queries, `ensure_dev_trainer`, and `trainer_id` on every
   battle-side method.
   Check: it compiles, and the existing behaviour is unchanged for one trainer.
-- [ ] 6. **`auth.rs`:** the `Trainer` extractor, the `DEV_AUTH` setting, `/api/me` and
+- [x] 6. **`auth.rs`:** the `Trainer` extractor, the `DEV_AUTH` setting, `/api/me` and
   `/api/dev/trainers`.
   Check: tests for criteria 8 and 9.
-- [ ] 7. **Handlers take `Trainer`.**
+- [x] 7. **Handlers take `Trainer`.**
   Check: tests for criteria 3, 4 and 5.
-- [ ] 8. **`backup-battles.sh` includes `trainer`.**
+- [x] 8. **`backup-battles.sh` includes `trainer`.**
   Check: criterion 6. Back up, restore into a fresh scratch DB, compare counts.
 - [ ] 9. **Frontend:** api.ts additions and `TrainerSwitcher`.
   Check: `npm run build` passes.
