@@ -1,6 +1,6 @@
 # 001: Trainer table
 
-Status: In progress · Rev 2 · 2026-10-06 · Built and merged; awaiting the user's GUI check (criteria 2, 7)
+Status: Done · Rev 2 · 2026-10-06
 Serves: vision §2 ("multi-user from day one") and §4 (Trainer). This is the foundation for
 capabilities 2–5.
 

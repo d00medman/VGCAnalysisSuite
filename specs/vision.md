@@ -151,7 +151,7 @@ Arrows show dependencies.
 | Item | Capability | Status |
 |---|---|---|
 | Transcript extraction (analyzer, web GUI) | 1 | Working |
-| Trainer table (accounts) | foundation for 2–5 | In progress, `001-trainer-table` |
+| Trainer table (accounts) | foundation for 2–5 | Done, `001-trainer-table` |
 | Stitch recordings into one battle | 1 | New |
 | Android, capture card and Switch 2 inputs | 1 | New |
 | Notification redaction (iOS, then Android) | phase 2 | Planned, `DeploymentPlan.md` §4 |

@@ -17,7 +17,7 @@ Running list of things we want to do. Details live in the linked devlogs.
   and measure CPU cost per video first as described in §5.
 - [ ] **Richer GUI log text from the pokedex.** Use the `pokedex/` database to add details
   (names, types, moves, etc.) to the transcript lines shown in the web GUI's logs.
-- [ ] **Trainer table (the user table).** Next big core-schema change. Battle data will point
+- [x] **Trainer table (the user table).** Done 2026-10-06: `specs/001-trainer-table`. Next big core-schema change. Battle data will point
   at it, so it's irreplaceable-side work: follow the workflow in
   [SchemaIteration.md](devlog/SchemaIteration.md) §4 (back up battles, iterate on a
   throwaway DB, commit before dev applies it), and consider the runner and scratch-DB
