@@ -136,7 +136,9 @@ Ordered by dependency. Stage D can run alongside B and C.
    - Forfeit detection
    - Advanced stats
 6. **Optional:** sprites, then on-screen Pokémon recognition.
-7. **Phase 2:** redaction, the job queue, auth and infrastructure
+7. **Dev tooling, any time:** per-branch Docker stacks. Lets parallel sessions, or the
+   user, run several branches side by side, each with its own copy of the data.
+8. **Phase 2:** redaction, the job queue, auth and infrastructure
    (`devlog/DeploymentPlan.md`). Also GPU decode, if the numbers justify it.
 
 The critical path to a usable product: **trainer table → hand-set result → wins/losses
@@ -149,7 +151,7 @@ Arrows show dependencies.
 | Item | Capability | Status |
 |---|---|---|
 | Transcript extraction (analyzer, web GUI) | 1 | Working |
-| Trainer table (accounts) | foundation for 2–5 | TODO, next schema change |
+| Trainer table (accounts) | foundation for 2–5 | In progress, `001-trainer-table` |
 | Stitch recordings into one battle | 1 | New |
 | Android, capture card and Switch 2 inputs | 1 | New |
 | Notification redaction (iOS, then Android) | phase 2 | Planned, `DeploymentPlan.md` §4 |
@@ -163,6 +165,7 @@ Arrows show dependencies.
 | Sprite data → on-screen Pokémon recognition | 1, 4 | TODO, optional |
 | Damage calculator (teams →) | 5 | TODO |
 | GPU decode | performance | TODO |
+| Per-branch Docker stacks | dev tooling | TODO |
 | Deployment | phase 2 | Planned, `devlog/DeploymentPlan.md` |
 
 ## 10. Open questions

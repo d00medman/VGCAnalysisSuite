@@ -2,6 +2,16 @@
 
 Running list of things we want to do. Details live in the linked devlogs.
 
+- [ ] **Per-branch Docker stacks.** A script, e.g. `scripts/stack.sh up <branch>`, that
+  runs a branch's own compose stack beside the main one:
+  - its own project name (`docker compose -p`) and free ports
+  - its own database, seeded the way `scripts/scratch-db.sh` does (pokedex rebuilt, latest
+    battle backup restored)
+  - prints the stack's URL
+
+  Then parallel sessions, or the user, can run and compare several branches, and a branch's
+  migrations never touch the dev database. Lifts the "Docker only from the repo root" rule
+  in `CLAUDE.md`. Related: stamping images with their git commit (parallel-sessions retro).
 - [ ] **GPU video decode.** Try NVDEC hardware decode to speed up video processing. See
   [AnalyzerPerformance.md §4d](devlog/AnalyzerPerformance.md) ("Server GPU decode (NVDEC)"),
   and measure CPU cost per video first as described in §5.
