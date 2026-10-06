@@ -145,7 +145,8 @@ def main():
         for w in tokens(text):
             if "?" not in w:
                 continue
-            g = guess(w, by_shape, known)
+            # A word of only `?`s says nothing about which character is missing.
+            g = guess(w, by_shape, known) if w.strip("?") else None
             if g:
                 for c in set(g):
                     filled[c] += 1
