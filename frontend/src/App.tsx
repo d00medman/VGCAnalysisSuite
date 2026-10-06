@@ -1,17 +1,23 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   canPlayHevc,
+  createDevTrainer,
+  devTrainers,
   getVideo,
   isActive,
   listVideos,
+  me,
   MESSAGE_ROI,
   originalUrl,
   previewUrl,
+  selectDevTrainer,
   setTurnEnd,
   snapshotUrl,
   transcribe,
   uploadVideo,
   type Message,
+  type Role,
+  type Trainer,
   type Video,
   type VideoDetail,
 } from "./api";
@@ -48,7 +54,13 @@ function useHash() {
 export default function App() {
   const hash = useHash();
   const [error, setError] = useState<string | null>(null);
+  // Bumped when the trainer changes, so the transcripts view remounts with their data.
+  const [trainerKey, setTrainerKey] = useState(0);
   const dex = hash === "pokedex" || hash.startsWith("pokedex/");
+  const onSwitch = useCallback(() => {
+    if (!dex) location.hash = "";
+    setTrainerKey((k) => k + 1);
+  }, [dex]);
 
   return (
     <div className="app">
@@ -62,13 +74,87 @@ export default function App() {
             Pokédex
           </a>
         </nav>
+        <TrainerSwitcher onSwitch={onSwitch} onError={setError} />
       </header>
       {error && (
         <div className="error" onClick={() => setError(null)}>
           {error}
         </div>
       )}
-      {dex ? <Pokedex route={hash} onError={setError} /> : <Transcripts onError={setError} />}
+      {dex ? <Pokedex route={hash} onError={setError} /> : <Transcripts key={trainerKey} onError={setError} />}
+    </div>
+  );
+}
+
+/** Dev only: who the page acts as. Renders nothing unless the server's dev stub is on. */
+function TrainerSwitcher({ onSwitch, onError }: { onSwitch: () => void; onError: (e: string) => void }) {
+  const [trainers, setTrainers] = useState<Trainer[] | null>(null);
+  const [current, setCurrent] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<Role>("user");
+
+  useEffect(() => {
+    Promise.all([devTrainers(), me()])
+      .then(([all, who]) => {
+        setTrainers(all);
+        setCurrent(who.id);
+      })
+      .catch((e) => onError(String(e.message ?? e)));
+  }, [onError]);
+
+  if (!trainers) return null;
+
+  const pick = (id: number) => {
+    selectDevTrainer(id);
+    setCurrent(id);
+    onSwitch();
+  };
+
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const t = await createDevTrainer(name.trim(), role);
+      setTrainers([...trainers, t]);
+      setAdding(false);
+      setName("");
+      setRole("user");
+      pick(t.id);
+    } catch (err: any) {
+      onError(String(err.message ?? err));
+    }
+  };
+
+  return (
+    <div className="trainer-switch" title="Dev only: which trainer this page acts as">
+      <span className="muted">Trainer</span>
+      <select value={current ?? ""} onChange={(e) => pick(Number(e.target.value))}>
+        {trainers.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.display_name} · #{t.id}
+            {t.role === "admin" ? " · admin" : ""}
+          </option>
+        ))}
+      </select>
+      {adding ? (
+        <form onSubmit={add}>
+          <input autoFocus placeholder="Display name" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
+          <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+            <option value="user">user</option>
+            <option value="admin">admin</option>
+          </select>
+          <button type="submit" className="primary" disabled={!name.trim()}>
+            Add
+          </button>
+          <button type="button" onClick={() => setAdding(false)}>
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <button type="button" onClick={() => setAdding(true)}>
+          New trainer
+        </button>
+      )}
     </div>
   );
 }

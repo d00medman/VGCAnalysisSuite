@@ -70,6 +70,20 @@ WEB_PORT=9000 docker compose -f "$REPO/compose.yaml" up --build -d
 Uploaded videos are kept, about 1 GB each, so any of them can be transcribed again with
 **Transcribe again**, for example after the reader improves.
 
+### Trainers
+
+Every upload belongs to a trainer (an account), and the page only shows the current
+trainer's battles. There's no sign-in yet. Locally, the API runs a dev stub (`DEV_AUTH=1`
+in `compose.yaml`), and the header has a **Trainer** switcher:
+- Pick a trainer to act as them. The page reloads that trainer's history.
+- **New trainer** adds one, with a display name and a role (`user` or `admin`), and
+  switches to it.
+- With nothing picked, the page acts as the oldest admin: you (*Alexander*). A fresh
+  database gets an admin called *Dev* on startup.
+
+The choice is a cookie (`dev_trainer`), so it survives reloads. Without `DEV_AUTH`, battle
+requests are refused (401) and the switcher doesn't appear. The Pokédex needs no trainer.
+
 ### The player
 
 The player sits above the transcript.
@@ -194,7 +208,8 @@ Design and schema notes: [SchemaAndIngestPlan.md](SchemaAndIngestPlan.md).
 
 ## Battles and transcripts
 
-Each upload is stored as a `video` holding one `battle`. Every transcription run adds a
+Each upload is stored as a `video` holding one `battle`, both owned by a `trainer`
+(`trainer_id`). Every transcription run adds a
 `transcript` row with its status. **Transcribe again** adds a new run and keeps the old ones;
 the page shows the newest finished run. Each message line is its own `transcript_line` row,
 with `seq` for its order and `t0`/`t1` for its time in the video. Later tables can link
@@ -221,7 +236,7 @@ Run the server and the page directly, with the compose Postgres:
 docker compose -f "$REPO/compose.yaml" up -d postgres
 
 # terminal 1: API on :8080. Uploads go to $REPO/server/data/videos (gitignored)
-cargo run --release --manifest-path "$REPO/server/Cargo.toml"
+DEV_AUTH=1 cargo run --release --manifest-path "$REPO/server/Cargo.toml"
 
 # terminal 2: page on http://localhost:5173, with live reload; /api is proxied to :8080
 npm --prefix "$REPO/frontend" install
@@ -237,5 +252,13 @@ Server settings (environment variables):
 | `VIDEO_DIR` | Where uploads are stored | `server/data/videos` |
 | `ANALYZER_FFMPEG` | ffmpeg binary | the analyzer's pinned ffmpeg |
 | `ANALYZER_ATLAS` | Glyph atlas file | the analyzer's committed atlas |
+| `DEV_AUTH` | `1` turns on the dev auth stub and trainer switcher; never set it when deployed | off |
 
 Front end: `API_URL` points the dev proxy somewhere other than `:8080`.
+
+Server tests need the compose Postgres running. Each test works in its own throwaway
+schema, so they don't touch your data:
+
+```sh
+cargo test --manifest-path "$REPO/server/Cargo.toml"
+```

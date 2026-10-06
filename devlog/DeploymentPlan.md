@@ -90,7 +90,15 @@ Proposal:
 - **Use an OIDC provider; don't build login.** The API validates JWTs in an axum
   middleware and maps the token's `sub` to a row in the trainer table (the "trainer table
   as the user table" TODO).
-- **Keep an auth stub for local compose runs.**
+- **Keep an auth stub for local compose runs.** **Done 2026-10-06**
+  (`specs/001-trainer-table`):
+  - **What exists:** the `trainer` table, with an `auth_subject` column waiting for the
+    token's `sub`.
+  - **Where login plugs in:** a `Trainer` extractor in `server/src/auth.rs`, which the OIDC
+    resolver will extend.
+  - **The stub:** `DEV_AUTH=1`, which picks the trainer by cookie.
+  - **Deploy rule:** the deployed API must not set `DEV_AUTH`. Without it, battle routes
+    answer 401 until a real resolver is added.
 
 Open: **which provider.** It depends on which "Sign in with …" buttons users should see.
 - **Cognito:** AWS-native, cheap. Google, Apple and email are easy. Discord is awkward,

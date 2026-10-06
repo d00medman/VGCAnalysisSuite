@@ -102,6 +102,41 @@ export function uploadVideo(file: File, onProgress: (fraction: number) => void):
   });
 }
 
+// ---------------------------------------------------------------- trainers
+// Every video belongs to a trainer, and the API acts as one per request. Until real sign-in
+// exists, the server's dev stub (DEV_AUTH=1) picks the trainer from a cookie, so media
+// requests from <video> and <img> carry it too.
+
+export type Role = "user" | "admin";
+
+export interface Trainer {
+  id: number;
+  display_name: string;
+  role: Role;
+}
+
+const DEV_COOKIE = "dev_trainer";
+
+export const me = () => fetch("/api/me").then((r) => json<Trainer>(r));
+
+/** Every trainer, or null when the dev stub is off (its routes then don't exist). */
+export async function devTrainers(): Promise<Trainer[] | null> {
+  const res = await fetch("/api/dev/trainers");
+  return res.status === 404 ? null : json<Trainer[]>(res);
+}
+
+export const createDevTrainer = (display_name: string, role: Role) =>
+  fetch("/api/dev/trainers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ display_name, role }),
+  }).then((r) => json<Trainer>(r));
+
+/** Act as `id` from now on. */
+export function selectDevTrainer(id: number) {
+  document.cookie = `${DEV_COOKIE}=${id}; Path=/; SameSite=Strict; Max-Age=31536000`;
+}
+
 // ---------------------------------------------------------------- pokedex (read-only)
 // Every call takes a regulation id; the server resolves stats, types, learnsets and
 // legality as of that regulation. Names are stored slugs ("close-combat").

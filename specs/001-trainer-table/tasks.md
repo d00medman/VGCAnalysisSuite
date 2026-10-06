@@ -1,7 +1,7 @@
 # 001: Trainer table · Tasks
 
 Small steps, in order. Each one ends in something that can be checked. Tick each box as
-its step is done. Work happens on branch `trainer`, in `../pokemon_recordings-trainer`.
+its step is done. Tasks 1–10 were done on branch `trainer` in a worktree, then merged.
 
 - [x] 1. **`scripts/scratch-db.sh`.** Throwaway Postgres on 55432, pokedex rebuilt, latest
   battle backup restored.
@@ -23,10 +23,11 @@ its step is done. Work happens on branch `trainer`, in `../pokemon_recordings-tr
   Check: tests for criteria 3, 4 and 5.
 - [x] 8. **`backup-battles.sh` includes `trainer`.**
   Check: criterion 6. Back up, restore into a fresh scratch DB, compare counts.
-- [ ] 9. **Frontend:** api.ts additions and `TrainerSwitcher`.
+- [x] 9. **Frontend:** api.ts additions and `TrainerSwitcher`.
   Check: `npm run build` passes.
-- [ ] 10. **compose `DEV_AUTH`, Guide section, DeploymentPlan §6 note.**
+- [x] 10. **compose `DEV_AUTH`, Guide section, DeploymentPlan §6 note.**
 - [ ] 11. **Converge.** Go through criteria 1–9 against the code, and report any gaps.
-- [ ] 12. **User step: merge to `main`, rebuild the stack from the repo root.**
+- [ ] 12. **Merge to `main` (done 2026-10-06, fast-forward). User step: rebuild the stack
+  from the repo root.**
   Check: criteria 2 and 7 in the GUI.
 - [ ] 13. **Close.** Set the spec's status to Done and tick the TODO item.

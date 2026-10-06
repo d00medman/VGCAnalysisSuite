@@ -453,6 +453,34 @@ header {
   font-weight: 600;
 }
 
+/* Dev-only trainer switcher, pushed to the right of the header. */
+.trainer-switch,
+.trainer-switch form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.trainer-switch {
+  margin-left: auto;
+}
+
+.trainer-switch select,
+.trainer-switch input,
+.trainer-switch button:not(.primary) {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+}
+
+.trainer-switch input {
+  width: 160px;
+}
+
 /* ---------------------------------------------------------------- pokedex */
 
 a {

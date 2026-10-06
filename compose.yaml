@@ -15,6 +15,9 @@ services:
       dockerfile: server/Dockerfile
     environment:
       DATABASE_URL: postgres://pokedex:${POSTGRES_PASSWORD:-pokedex}@postgres:5432/pokedex
+      # Dev auth stub: act as a trainer picked in the page's switcher, no sign-in. Local
+      # only; a deployed API must never set it (specs/001-trainer-table).
+      DEV_AUTH: "1"
     volumes:
       # Uploaded recordings are kept so they can be transcribed again later.
       - videos:/data/videos
