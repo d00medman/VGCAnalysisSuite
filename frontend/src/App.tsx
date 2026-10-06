@@ -95,10 +95,15 @@ function TrainerSwitcher({ onSwitch, onError }: { onSwitch: () => void; onError:
   const [role, setRole] = useState<Role>("user");
 
   useEffect(() => {
-    Promise.all([devTrainers(), me()])
-      .then(([all, who]) => {
+    devTrainers()
+      .then(async (all) => {
         setTrainers(all);
-        setCurrent(who.id);
+        if (!all) return;
+        // A cookie naming a trainer that's gone (e.g. after a database reset) makes `me`
+        // fail; the switcher must still show, so another trainer can be picked.
+        const who = await me().catch(() => null);
+        setCurrent(who?.id ?? null);
+        if (!who) onError("The selected trainer no longer exists. Pick one in the Trainer menu.");
       })
       .catch((e) => onError(String(e.message ?? e)));
   }, [onError]);
@@ -129,6 +134,11 @@ function TrainerSwitcher({ onSwitch, onError }: { onSwitch: () => void; onError:
     <div className="trainer-switch" title="Dev only: which trainer this page acts as">
       <span className="muted">Trainer</span>
       <select value={current ?? ""} onChange={(e) => pick(Number(e.target.value))}>
+        {current === null && (
+          <option value="" disabled>
+            Pick a trainer
+          </option>
+        )}
         {trainers.map((t) => (
           <option key={t.id} value={t.id}>
             {t.display_name} · #{t.id}
