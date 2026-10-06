@@ -179,4 +179,12 @@ Arrows show dependencies.
   manufacturer and OS version, so a fixed blur band may not be enough. Android recordings
   may also differ from iOS in resolution, aspect ratio and frame rate, which the analyzer
   would need to handle.
+- **Non-Latin names:** player names and nicknames can be Japanese, Chinese or Korean, which
+  the reader can't read (the atlas is Latin only). Names show as `???`, and a nicknamed
+  opponent Pokémon loses its species. Options:
+  - link "sent out ???" to the species seen at team preview, or to sprite recognition
+  - render glyph templates from the game's font
+  - send unknown names to an OCR engine such as Tesseract
+
+  Leaning toward the first, which recovers species in any script.
 - **Native app:** what would it add over the mobile website, and when would it be worth it?
