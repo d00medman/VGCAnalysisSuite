@@ -3,6 +3,15 @@
 //! The recordings are VFR (iOS drops frames while the screen is static), so frame index is
 //! not proportional to time. Every frame is paired with its PTS as reported by ffmpeg's
 //! `showinfo` filter on stderr — never derived from a counter and a nominal rate.
+//!
+//! **Speed experiments** (devlog/AnalyzerPerformance.md §4), off unless set in the
+//! environment, so a benchmark can compare them against the default on the same videos:
+//! - `ANALYZER_CROP_FIRST=1`: skip ffmpeg's autorotate and crop the message strip from the
+//!   stored portrait frame, rotating only the strip. Assumes the iPhone layout: stored
+//!   1126x2436 with a 90° display rotation, i.e. autorotate's `transpose=cclock`.
+//! - `ANALYZER_SKIP_NONREF=1`: don't decode frames no other frame references. Fewer frames,
+//!   so output can differ.
+//! - `ANALYZER_HWACCEL=<method>`: hardware decode, e.g. `vdpau`. Pixels can differ slightly.
 
 use anyhow::{bail, Context, Result};
 use std::io::{BufRead, BufReader, Read};
@@ -36,6 +45,41 @@ pub struct Decoder {
     /// Input duration from ffmpeg's `Duration:` header line, once it has been printed.
     duration: Arc<OnceLock<f64>>,
     frame_len: usize,
+}
+
+/// Height of the decoded landscape frame: the stored portrait frame's width.
+const FRAME_H: u32 = 1126;
+
+/// The speed experiments in the module note, read from the environment.
+#[derive(Clone, Debug, Default)]
+struct Speed {
+    crop_first: bool,
+    skip_nonref: bool,
+    hwaccel: Option<String>,
+}
+
+impl Speed {
+    fn from_env() -> Self {
+        let on = |k: &str| std::env::var(k).is_ok_and(|v| v == "1");
+        Speed {
+            crop_first: on("ANALYZER_CROP_FIRST"),
+            skip_nonref: on("ANALYZER_SKIP_NONREF"),
+            hwaccel: std::env::var("ANALYZER_HWACCEL").ok().filter(|v| !v.is_empty()),
+        }
+    }
+}
+
+/// The filter that turns a decoded frame into the `rect` strip of the landscape frame.
+/// Normally ffmpeg has already rotated the frame; with `crop_first` it hasn't, so crop the
+/// same pixels from the portrait frame and rotate just them. For `transpose=cclock`,
+/// landscape (x, y) is portrait (FRAME_H - 1 - y, x).
+fn roi_filter(rect: Rect, crop_first: bool) -> String {
+    if crop_first {
+        let px = FRAME_H - rect.y - rect.h;
+        format!("crop={}:{}:{}:{},transpose=cclock", rect.h, rect.w, px, rect.x)
+    } else {
+        format!("crop={}:{}:{}:{}", rect.w, rect.h, rect.x, rect.y)
+    }
 }
 
 /// Locate the pinned ffmpeg: explicit path, else `vendor/ffmpeg` beside this crate, else PATH.
@@ -89,8 +133,18 @@ impl Decoder {
         duration: Option<f64>,
         extras: &Extras,
     ) -> Result<Self> {
+        let speed = Speed::from_env();
         let mut cmd = Command::new(ffmpeg);
         cmd.args(["-hide_banner", "-nostats", "-loglevel", "info"]);
+        if let Some(h) = &speed.hwaccel {
+            cmd.args(["-hwaccel", h]);
+        }
+        if speed.skip_nonref {
+            cmd.args(["-skip_frame", "nonref"]);
+        }
+        if speed.crop_first {
+            cmd.arg("-noautorotate");
+        }
         if let Some(s) = start {
             // Input-side seek, with -copyts so reported PTS stay in file time.
             cmd.args(["-ss", &format!("{s}"), "-copyts"]);
@@ -101,7 +155,14 @@ impl Decoder {
         }
         cmd.arg("-i").arg(video);
         // showinfo is only here for pts_time; its per-frame checksums are wasted work.
-        let roi = format!("crop={}:{}:{}:{},showinfo=checksum=0", rect.w, rect.h, rect.x, rect.y);
+        let roi = format!("{},showinfo=checksum=0", roi_filter(rect, speed.crop_first));
+        // Side outputs are of the whole landscape frame; without autorotate they rotate
+        // themselves, after scaling so the rotation moves fewer pixels.
+        let (pv_scale, sn_scale) = if speed.crop_first {
+            ("scale=-2:1280,transpose=cclock", "scale=-2:640,transpose=cclock")
+        } else {
+            ("scale=1280:-2", "scale=640:-2")
+        };
         if extras.any() {
             let mut graph = format!(
                 "[0:v:0]split={}[roi_in]{}{};[roi_in]{roi}[roi]",
@@ -110,10 +171,10 @@ impl Decoder {
                 if extras.snapshot.is_some() { "[sn_in]" } else { "" },
             );
             if extras.preview.is_some() {
-                graph += ";[pv_in]scale=1280:-2,format=yuv420p[pv]";
+                graph += &format!(";[pv_in]{pv_scale},format=yuv420p[pv]");
             }
             if extras.snapshot.is_some() {
-                graph += ";[sn_in]fps=2,scale=640:-2[sn]";
+                graph += &format!(";[sn_in]fps=2,{sn_scale}[sn]");
             }
             cmd.args(["-filter_complex", &graph, "-map", "[roi]"]);
         } else {
@@ -275,6 +336,14 @@ mod tests {
     fn parses_showinfo_line() {
         let l = "[Parsed_showinfo_1 @ 0x5] n:  12 pts:  48000 pts_time:0.8     duration:600";
         assert_eq!(parse_pts_time(l), Some(0.8));
+    }
+
+    #[test]
+    fn crop_first_takes_the_same_pixels_from_the_portrait_frame() {
+        let roi = Rect { x: 500, y: 740, w: 1936, h: 120 };
+        assert_eq!(roi_filter(roi, false), "crop=1936:120:500:740");
+        // Portrait x = 1126 - 740 - 120 = 266, y = 500; both even, so 4:2:0 chroma aligns.
+        assert_eq!(roi_filter(roi, true), "crop=120:1936:266:500,transpose=cclock");
     }
 
     #[test]
