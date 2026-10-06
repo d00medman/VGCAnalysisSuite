@@ -3,12 +3,12 @@
 Small steps, in order. Each one ends in something that can be checked. Tick each box as
 its step is done. Work happens on branch `trainer`, in `../pokemon_recordings-trainer`.
 
-- [ ] 1. **`scripts/scratch-db.sh`.** Throwaway Postgres on 55432, pokedex rebuilt, latest
+- [x] 1. **`scripts/scratch-db.sh`.** Throwaway Postgres on 55432, pokedex rebuilt, latest
   battle backup restored.
   Check: run it, and the counts match the backup.
-- [ ] 2. **User step: take a fresh battle backup of dev** with
+- [x] 2. **User step: take a fresh battle backup of dev** with
   `scripts/backup-battles.sh`.
-- [ ] 3. **Migration `0008_trainers.sql`** and its line in `migrate.rs`. Iterate against the
+- [x] 3. **Migration `0008_trainers.sql`** and its line in `migrate.rs`. Iterate against the
   scratch DB.
   Check: criterion 1, video and battle counts per trainer.
 - [ ] 4. **Server test harness.** Schema-per-test, and a `Router` built by a function.

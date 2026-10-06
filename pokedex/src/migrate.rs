@@ -17,6 +17,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("0005_battles", include_str!("../migrations/0005_battles.sql")),
     ("0006_display_names", include_str!("../migrations/0006_display_names.sql")),
     ("0007_turns", include_str!("../migrations/0007_turns.sql")),
+    ("0008_trainers", include_str!("../migrations/0008_trainers.sql")),
 ];
 
 pub const LATEST_VERSION: i32 = MIGRATIONS.len() as i32;

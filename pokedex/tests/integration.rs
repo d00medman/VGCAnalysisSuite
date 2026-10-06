@@ -476,8 +476,10 @@ fn transcript_lines_keep_order_and_one_run_is_active_per_battle() {
     let mut db = TestDb::migrated();
     let c = db.client();
     c.batch_execute(
-        "INSERT INTO video (id, name, file, size_bytes) VALUES ('v1', 'a.MP4', 'v1.mp4', 100);
-         INSERT INTO battle (video_id) VALUES ('v1');
+        "INSERT INTO trainer (display_name) VALUES ('Ash');
+         INSERT INTO video (id, name, file, size_bytes, trainer_id)
+         SELECT 'v1', 'a.MP4', 'v1.mp4', 100, id FROM trainer;
+         INSERT INTO battle (video_id, trainer_id) SELECT id, trainer_id FROM video;
          INSERT INTO transcript (battle_id, status) SELECT id, 'done' FROM battle;
          INSERT INTO transcript_line (transcript_id, seq, t0, t1, text, conf, clean)
          SELECT t.id, s, s * 2.0, s * 2.0 + 1.5, 'line ' || s, 0.9, true
@@ -501,4 +503,41 @@ fn transcript_lines_keep_order_and_one_run_is_active_per_battle() {
     // Deleting the video removes everything under it.
     c.execute("DELETE FROM video", &[]).unwrap();
     assert_eq!(count(&mut db, "SELECT count(*) FROM transcript_line"), 0);
+}
+
+#[test]
+fn trainers_have_a_role_and_battles_share_their_recordings_owner() {
+    let mut db = TestDb::migrated();
+    // A fresh database has no trainers: the migration only creates one to own existing data.
+    assert_eq!(count(&mut db, "SELECT count(*) FROM trainer"), 0);
+
+    let c = db.client();
+    c.batch_execute(
+        "INSERT INTO trainer (display_name) VALUES ('Ash'), ('Misty');
+         INSERT INTO video (id, name, file, size_bytes, trainer_id)
+         SELECT 'v1', 'a.MP4', 'v1.mp4', 100, min(id) FROM trainer;",
+    )
+    .unwrap();
+    assert_eq!(
+        count(&mut db, "SELECT count(*) FROM trainer WHERE role = 'user'"),
+        2,
+        "new trainers default to user"
+    );
+
+    let c = db.client();
+    let err = c
+        .execute("INSERT INTO trainer (display_name, role) VALUES ('Brock', 'owner')", &[])
+        .unwrap_err();
+    assert!(format!("{err:?}").contains("trainer_role_check"), "{err:?}");
+    let err = c.execute("INSERT INTO trainer (display_name) VALUES ('  ')", &[]).unwrap_err();
+    assert!(format!("{err:?}").contains("trainer_display_name_check"), "{err:?}");
+
+    // Misty can't own a battle in Ash's recording.
+    let err = c
+        .execute(
+            "INSERT INTO battle (video_id, trainer_id) SELECT 'v1', max(id) FROM trainer",
+            &[],
+        )
+        .unwrap_err();
+    assert!(format!("{err:?}").contains("battle_video_owner_fkey"), "{err:?}");
 }
