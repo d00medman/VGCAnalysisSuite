@@ -1,6 +1,6 @@
 # 003: HP panel reader — species from panel icons
 
-Status: Draft · Rev 1 · 2026-10-07
+Status: Draft · Rev 2 · 2026-10-07 · Blocking questions answered; awaiting approval
 Serves: vision §5 capability 4 (derived data) and 3 (stats); §10 "Non-Latin names". It
 also covers your own nicknamed Pokémon.
 
@@ -37,6 +37,8 @@ The panels are up every turn during move selection, in every recording.
 - **Nicknames resolve to species.** Each nickname (or `?` name) in the transcript maps to
   a species, so a line like `The opposing ??? used Protect!` can be attributed, as can
   `Go! Big Man!`.
+- **Shiny Pokémon count as their species.** `Decided:` a shiny's icon has different colours,
+  so matching has to work on shape, not colour alone.
 - **Unknown icons stay unknown.** An icon the library has never seen is reported as
   unknown, never as a best guess, and its crop is saved so it can be labelled.
 - **The icon library is built from your recordings.** When the transcript names a
@@ -53,8 +55,8 @@ The panels are up every turn during move selection, in every recording.
 - Mapping names to species per battle.
 
 **Out (non-goals, for now):**
-- **Reading HP, status and gender from the panels.** It's natural next work in the same
-  spot; `Open:` see question 2.
+- **Reading HP, status and gender from the panels.** `Decided:` this is the follow-up spec
+  once species works. It shares the panel crop but needs its own italic digit glyphs.
 - **Team preview** (who was brought but never sent out). It stays on the roadmap as a
   complement.
 - **Identifying the 3D battle models.**
@@ -64,9 +66,13 @@ The panels are up every turn during move selection, in every recording.
 
 Draft, with thresholds to settle in the plan.
 
-1. **Accuracy.** On a hand-checked set of panel crops covering both sides, many species,
-   and highlighted and plain panels, at least `Open:` 98% are identified correctly. No
-   icon is ever given a wrong species with high confidence.
+1. **Accuracy.** On a hand-checked set of panel crops, at least 98% are identified correctly,
+   and no icon is ever given a wrong species with high confidence.
+   - **The set:** about 100 crops covering both sides, many species, highlighted and plain
+     panels, and any shinies found.
+   - **Checking it:** Claude prepares a contact sheet with proposed labels; the user
+     confirms or corrects them.
+   - **Shinies:** any in the set must be identified as their species.
 2. **Nickname mapping.** In Batch 0, every Pokémon you nicknamed maps to the right species,
    and so do the opposing Pokémon in PMBT5875 (the battle with non-Latin nicknames).
 3. **Coverage.** The library covers every species seen in Batch 0 and Batch 1. Unknown
@@ -85,16 +91,12 @@ Draft, with thresholds to settle in the plan.
 
 ## Open questions
 
-Blocking:
+Blocking: none. Answered 2026-10-07:
 
-1. **How much hand-checking for the accuracy set?** About 100 crops is roughly 15 minutes of
-   review. I'd prepare a contact sheet with proposed labels, and you'd confirm or correct
-   them.
-2. **Species only first, or HP % and status too?** Species is the goal. HP and status
-   share the crop and add derived data, but they need their own small glyph set (an
-   italic digit font). I'd do species first, then HP and status as a follow-up.
-3. **Shiny Pokémon.** A shiny's icon has different colours, which matters if matching uses
-   colour. Do shinies show up in your games, and should a shiny count as its species?
+1. **Accuracy set:** yes. About 100 crops, which Claude prepares with proposed labels and
+   the user reviews.
+2. **Species first;** HP and status in a follow-up spec.
+3. **Shinies count as their regular species.**
 
 Not blocking (answered in the plan, from samples):
 
