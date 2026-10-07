@@ -147,3 +147,23 @@ slices: 7 Batch 1 videos, 3 minutes each from 1:00, idle machine.
 - **vdpau:** the static pinned build may be unable to load the NVIDIA VDPAU driver, and this
   laptop renders on the Intel GPU. Still to check: the driver, `VDPAU_DRIVER=nvidia`, and
   whether a system ffmpeg with `nvdec`/`cuda` decodes at all.
+
+### Second run (2026-10-07, after the `noref` fix)
+
+Same slices; base is autorotate. The binary predates crop-first becoming the default.
+
+| variant | wall | speedup | CPU | transcript vs base |
+|---|---|---|---|---|
+| base | 307s | 1.00x | 1873s | — |
+| skip-nonref (4b) | 301s | 1.02x | 1831s (−2%) | 175/176 lines, drift 0.04s |
+| crop-first (4a) | 299s | 1.02x | 1713s (−9%) | identical |
+
+- **Noise is as large as the effects.** The base moved 15% between runs (354s → 307s), and
+  one video took 42–61s across variants. Read CPU time, not wall time.
+- **Crop-first:** −9% and −14% CPU in two runs, identical output both times. It's the
+  default, and worth keeping.
+- **Skip-nonref: not worth it.** −2% CPU and a changed line. iPhone HEVC seems to have few
+  unreferenced frames to skip. It stays an opt-in switch, off.
+- **Software HEVC decode is the cost floor.** Only hardware decode (4d, blocked on the
+  vdpau device error) or on-device decode (4e; see `specs/vision.md` §10, "Where decoding
+  runs") would move it much.
