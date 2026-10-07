@@ -128,11 +128,5 @@ Not blocking (answered in the plan, from samples):
    slide-out frames, and what a fainted or empty slot looks like.
 6. **Megas and alternate forms** (Rotom forms, regional forms) need their own templates:
    either labelled as their form, or folded into their species for stats.
-7. **Template source.** The Bulbagarden Archives hosts ripped *Champions* menu sprites
-   (359 normal, 359 shiny, 128×128, Megas included).
-   - **If they're the same drawings as the panel icons,** they could seed the whole library
-     at once, and the transcript labels and the review step become checks and gap-fillers.
-   - **Not yet confirmed:** the user is saving the Garchomp sprite for comparison.
-   - **Either way,** game art stays out of git; a script fetches it.
-8. **Where the reader runs:** inside the existing transcription pass, which decodes each
+7. **Where the reader runs:** inside the existing transcription pass, which decodes each
    frame once anyway (cheapest), or as a separate pass.
