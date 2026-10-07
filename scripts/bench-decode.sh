@@ -22,14 +22,22 @@ t=${T:-180}
 #   bench-decode.sh --variant <out dir> <name> <videos at once> [VAR=value...]
 # Videos come from BENCH_VIDEOS, one per line.
 if [[ ${1:-} == --variant ]]; then
-  dir=$2/$3 par=$4
+  dir=$2/$3 par=$4 name=$3
   shift 4
   mkdir -p "$dir"
   mapfile -t videos <<<"$BENCH_VIDEOS"
+  i=0
   for v in "${videos[@]}"; do
+    i=$((i + 1))
     stem=$(basename "${v%.*}")
-    (env "$@" "$analyzer" -q transcript "$v" --ss "$ss" --t "$t" >"$dir/$stem.txt" 2>"$dir/$stem.err" ||
-      touch "$dir/$stem.failed") &
+    # One line per finished video, so a long variant visibly makes progress.
+    (start=$SECONDS
+     if env "$@" "$analyzer" -q transcript "$v" --ss "$ss" --t "$t" >"$dir/$stem.txt" 2>"$dir/$stem.err"; then
+       echo "    $name: $i/${#videos[@]} $stem done in $((SECONDS - start))s" >&2
+     else
+       touch "$dir/$stem.failed"
+       echo "    $name: $i/${#videos[@]} $stem FAILED, see $dir/$stem.err" >&2
+     fi) &
     while (($(jobs -rp | wc -l) >= par)); do wait -n || true; done
   done
   wait
@@ -64,6 +72,7 @@ variant() {
   echo "variant $name: $2 at once, ${*:3}" >&2
   /usr/bin/time -f "%U %S" -o "$out/$name.cpu" "$0" --variant "$out" "$@"
   echo "$name $((SECONDS - start))" >>"$out/times"
+  echo "  $name finished in $((SECONDS - start))s" >&2
 }
 variant base 1
 variant crop-first 1 ANALYZER_CROP_FIRST=1
