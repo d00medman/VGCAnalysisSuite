@@ -4,13 +4,19 @@
 //! not proportional to time. Every frame is paired with its PTS as reported by ffmpeg's
 //! `showinfo` filter on stderr — never derived from a counter and a nominal rate.
 //!
+//! **Crop before rotate.** iPhone recordings are stored portrait (1126 wide) with a 90°
+//! rotation flag, and ffmpeg's autorotate would turn every whole frame before our crop
+//! keeps 9% of it. So when a header probe (`ffprobe`, no decoding) confirms exactly that
+//! layout, autorotate is skipped and the same strip is cropped from the portrait frame and
+//! rotated alone. Measured 1.10x faster with byte-identical pixels and identical
+//! transcripts (devlog/AnalyzerPerformance.md, 2026-10-07). Any other layout (Android,
+//! capture card), a failed probe, or side outputs (`Extras`, not yet verified this way)
+//! keep the autorotate path. `ANALYZER_CROP_FIRST=0` turns it off.
+//!
 //! **Speed experiments** (devlog/AnalyzerPerformance.md §4), off unless set in the
 //! environment, so a benchmark can compare them against the default on the same videos:
-//! - `ANALYZER_CROP_FIRST=1`: skip ffmpeg's autorotate and crop the message strip from the
-//!   stored portrait frame, rotating only the strip. Assumes the iPhone layout: stored
-//!   1126x2436 with a 90° display rotation, i.e. autorotate's `transpose=cclock`.
-//! - `ANALYZER_SKIP_NONREF=1`: don't decode frames no other frame references. Fewer frames,
-//!   so output can differ.
+//! - `ANALYZER_SKIP_NONREF=1`: don't decode frames no other frame references
+//!   (`-skip_frame noref`). Fewer frames, so output can differ.
 //! - `ANALYZER_HWACCEL=<method>`: hardware decode, e.g. `vdpau`. Pixels can differ slightly.
 
 use anyhow::{bail, Context, Result};
@@ -50,9 +56,10 @@ pub struct Decoder {
 /// Height of the decoded landscape frame: the stored portrait frame's width.
 const FRAME_H: u32 = 1126;
 
-/// The speed experiments in the module note, read from the environment.
+/// The switches in the module note, read from the environment.
 #[derive(Clone, Debug, Default)]
 struct Speed {
+    /// Crop before rotate where the layout allows it; on unless `ANALYZER_CROP_FIRST=0`.
     crop_first: bool,
     skip_nonref: bool,
     hwaccel: Option<String>,
@@ -62,11 +69,39 @@ impl Speed {
     fn from_env() -> Self {
         let on = |k: &str| std::env::var(k).is_ok_and(|v| v == "1");
         Speed {
-            crop_first: on("ANALYZER_CROP_FIRST"),
+            crop_first: std::env::var("ANALYZER_CROP_FIRST").map_or(true, |v| v != "0"),
             skip_nonref: on("ANALYZER_SKIP_NONREF"),
             hwaccel: std::env::var("ANALYZER_HWACCEL").ok().filter(|v| !v.is_empty()),
         }
     }
+}
+
+/// Whether `video` has the stored layout crop-first was verified on: portrait, `FRAME_H`
+/// wide, 90° display rotation (autorotate's `transpose=cclock`). Asks the `ffprobe` beside
+/// `ffmpeg` (else on PATH) for the header fields only; anything unexpected answers false.
+fn iphone_layout(ffmpeg: &Path, video: &Path) -> bool {
+    let ffprobe = ffmpeg.with_file_name("ffprobe");
+    let ffprobe = if ffprobe.exists() { ffprobe } else { PathBuf::from("ffprobe") };
+    let out = Command::new(ffprobe)
+        .args(["-v", "error", "-select_streams", "v:0"])
+        .args(["-show_entries", "stream=width:stream_side_data=rotation", "-of", "default=nw=1"])
+        .arg(video)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output();
+    match out {
+        Ok(o) if o.status.success() => is_iphone_layout(&String::from_utf8_lossy(&o.stdout)),
+        _ => false,
+    }
+}
+
+/// `width=1126` and `rotation=90` lines from ffprobe's `default=nw=1` output.
+fn is_iphone_layout(probe: &str) -> bool {
+    let field = |k: &str| {
+        probe.lines().find_map(|l| l.trim().strip_prefix(k)?.strip_prefix('=').map(str::to_owned))
+    };
+    field("width").and_then(|w| w.parse::<u32>().ok()) == Some(FRAME_H)
+        && field("rotation").and_then(|r| r.parse::<f64>().ok()) == Some(90.0)
 }
 
 /// The filter that turns a decoded frame into the `rect` strip of the landscape frame.
@@ -134,15 +169,17 @@ impl Decoder {
         extras: &Extras,
     ) -> Result<Self> {
         let speed = Speed::from_env();
+        let crop_first = speed.crop_first && !extras.any() && iphone_layout(ffmpeg, video);
         let mut cmd = Command::new(ffmpeg);
         cmd.args(["-hide_banner", "-nostats", "-loglevel", "info"]);
         if let Some(h) = &speed.hwaccel {
             cmd.args(["-hwaccel", h]);
         }
         if speed.skip_nonref {
-            cmd.args(["-skip_frame", "nonref"]);
+            // ffmpeg's AVDiscard value is `noref`; `nonref` is rejected before decoding starts.
+            cmd.args(["-skip_frame", "noref"]);
         }
-        if speed.crop_first {
+        if crop_first {
             cmd.arg("-noautorotate");
         }
         if let Some(s) = start {
@@ -155,14 +192,7 @@ impl Decoder {
         }
         cmd.arg("-i").arg(video);
         // showinfo is only here for pts_time; its per-frame checksums are wasted work.
-        let roi = format!("{},showinfo=checksum=0", roi_filter(rect, speed.crop_first));
-        // Side outputs are of the whole landscape frame; without autorotate they rotate
-        // themselves, after scaling so the rotation moves fewer pixels.
-        let (pv_scale, sn_scale) = if speed.crop_first {
-            ("scale=-2:1280,transpose=cclock", "scale=-2:640,transpose=cclock")
-        } else {
-            ("scale=1280:-2", "scale=640:-2")
-        };
+        let roi = format!("{},showinfo=checksum=0", roi_filter(rect, crop_first));
         if extras.any() {
             let mut graph = format!(
                 "[0:v:0]split={}[roi_in]{}{};[roi_in]{roi}[roi]",
@@ -171,10 +201,10 @@ impl Decoder {
                 if extras.snapshot.is_some() { "[sn_in]" } else { "" },
             );
             if extras.preview.is_some() {
-                graph += &format!(";[pv_in]{pv_scale},format=yuv420p[pv]");
+                graph += ";[pv_in]scale=1280:-2,format=yuv420p[pv]";
             }
             if extras.snapshot.is_some() {
-                graph += &format!(";[sn_in]fps=2,{sn_scale}[sn]");
+                graph += ";[sn_in]fps=2,scale=640:-2[sn]";
             }
             cmd.args(["-filter_complex", &graph, "-map", "[roi]"]);
         } else {
@@ -344,6 +374,17 @@ mod tests {
         assert_eq!(roi_filter(roi, false), "crop=1936:120:500:740");
         // Portrait x = 1126 - 740 - 120 = 266, y = 500; both even, so 4:2:0 chroma aligns.
         assert_eq!(roi_filter(roi, true), "crop=120:1936:266:500,transpose=cclock");
+    }
+
+    #[test]
+    fn crop_first_needs_the_verified_iphone_layout() {
+        // ffprobe -show_entries stream=width:stream_side_data=rotation -of default=nw=1
+        assert!(is_iphone_layout("width=1126\nrotation=90\n"));
+        assert!(is_iphone_layout("width=1126\nrotation=90.000000\n"));
+        assert!(!is_iphone_layout("width=1126\nrotation=-90\n"), "other direction: unverified");
+        assert!(!is_iphone_layout("width=1080\nrotation=90\n"), "other phone: strip math differs");
+        assert!(!is_iphone_layout("width=1920\n"), "no rotation flag: capture card");
+        assert!(!is_iphone_layout(""), "probe printed nothing");
     }
 
     #[test]

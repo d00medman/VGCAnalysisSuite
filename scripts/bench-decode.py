@@ -30,16 +30,16 @@ BENCH = REPO / "sandbox" / "bench"
 ANALYZER = BENCH / "target" / "release" / "analyzer"
 FFMPEG = ANALYZER_DIR / "vendor" / "ffmpeg"
 
-ALL = {"ANALYZER_CROP_FIRST": "1", "ANALYZER_SKIP_NONREF": "1", "ANALYZER_HWACCEL": "vdpau"}
-# name → (videos at once, environment)
+ALL = {"ANALYZER_SKIP_NONREF": "1", "ANALYZER_HWACCEL": "vdpau"}
+# name → (videos at once, environment). `base` is the analyzer's defaults, which include
+# crop-before-rotate on iPhone-layout videos; `no-crop-first` turns that off.
 VARIANTS = {
     "base": (1, {}),
-    "crop-first": (1, {"ANALYZER_CROP_FIRST": "1"}),
+    "no-crop-first": (1, {"ANALYZER_CROP_FIRST": "0"}),
     "skip-nonref": (1, {"ANALYZER_SKIP_NONREF": "1"}),
     "vdpau": (1, {"ANALYZER_HWACCEL": "vdpau"}),
     "all": (1, ALL),
-    "base-x2": (2, {}),
-    "all-x2": (2, ALL),
+    # Two videos at once measured 0.86x on 2026-10-07: one decode already saturates the cores.
 }
 
 
@@ -139,8 +139,12 @@ def main() -> int:
     b_wall = results["base"][0]
     rows = []
     for name, (wall, cpu, failures) in results.items():
-        same, total, drift, unclear = compare(base, transcripts.read_dir(out / name))
         runs = "all ok" if not failures else f"{len(failures)} FAILED"
+        if failures:
+            # Failed runs end at once; their timings and transcripts would only mislead.
+            rows.append(f"| {name} | — | — | — | {runs} | — | — | — |")
+            continue
+        same, total, drift, unclear = compare(base, transcripts.read_dir(out / name))
         rows.append(f"| {name} | {wall:.0f}s | {b_wall / wall:.2f}x | {cpu:.0f}s | {runs} | "
                     f"{same}/{total} | {drift:.2f}s | {unclear} |")
     report = (f"# Decode benchmark\n\n{len(videos)} videos, {args.t:.0f}s each from {args.ss:.0f}s. "

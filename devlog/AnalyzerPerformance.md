@@ -67,7 +67,7 @@ full 2436×1126 frame *before* our crop, moving ~4MB/frame to keep 9% of it. Wit
 offsets are even, so 4:2:0 chroma stays aligned. [unverified] estimate: 5–15% of decode-side
 time. Needs a transcript diff to confirm identical output.
 
-**b. `-skip_frame nonref`** — may skip decoding non-reference B-frames. Gain depends on the
+**b. `-skip_frame noref`** — may skip decoding non-reference B-frames. Gain depends on the
 iOS GOP structure [unverified]. **Changes output** (fewer frames, coarser timing); messages
 are on screen for seconds so probably tolerable, but needs a transcript comparison.
 
@@ -114,7 +114,36 @@ time vendor/ffmpeg -hide_banner -hwaccel vdpau -ss 120 -t 60 -i <video> -map 0:v
 ### 6. When picking this back up
 
 - [ ] Diff `--jsonl` old vs new on the full reference video (explains 18,249 vs 18,250?)
-- [ ] Measure CPU-seconds per video-minute
-- [ ] Try 4a (`-noautorotate` + portrait crop), diff transcripts
-- [ ] Optional: vdpau timing test (4d)
+- [x] Measure CPU-seconds per video-minute: see §7
+- [x] Try 4a (`-noautorotate` + portrait crop), diff transcripts: see §7
+- [ ] Optional: vdpau timing test (4d): first attempt failed, see §7
 - [ ] Spike: WASM build of `text`/`atlas`/`episode`; WebCodecs HEVC decode of a real recording
+
+## 2026-10-07 — first benchmark: crop-first wins a little, two-at-once loses
+
+`scripts/bench-decode.py` runs each experiment (env switches in `decode.rs`) on the same
+slices: 7 Batch 1 videos, 3 minutes each from 1:00, idle machine.
+
+| variant | wall | speedup | CPU | transcript vs base |
+|---|---|---|---|---|
+| base | 354s | 1.00x | 2072s | — |
+| crop-first (4a) | 320s | 1.10x | 1781s (−14%) | identical, 176/176 lines; pixels byte-identical |
+| two videos at once | 409s | 0.86x | 2343s | identical |
+| skip-nonref (4b) | failed | | | `-skip_frame nonref` is not a value; it's `noref` (fixed) |
+| vdpau (4d) | failed | | | "Device creation failed: -38 … No device available for decoder" |
+
+- **Baseline cost:** roughly 100 CPU-seconds per video-minute. One video already keeps
+  about 6 of the 8 cores busy.
+- **Two at once is slower:** the cores are already saturated, so a second decode only adds
+  contention. `transcribe-all.py -j` stays at 1 by default.
+- **Crop-first:** worth adopting, but only where the rotation it assumes is true. It
+  hard-codes the iPhone layout (90° display matrix), and Android and capture-card
+  recordings won't match. **Adopted the same day:** `decode.rs` probes each file's header
+  (`ffprobe`, no decode) and crops first only for width 1126 with rotation 90. That covers
+  198 of the 219 recordings. The other 21 are rotation −90 (phone held the other way) and
+  keep autorotate until the mirrored crop (portrait x = 740, y = 0, then `transpose=clock`)
+  passes the same pixel check. The server's transcriptions (with preview and snapshot side
+  outputs) also keep autorotate for now.
+- **vdpau:** the static pinned build may be unable to load the NVIDIA VDPAU driver, and this
+  laptop renders on the Intel GPU. Still to check: the driver, `VDPAU_DRIVER=nvidia`, and
+  whether a system ffmpeg with `nvdec`/`cuda` decodes at all.
