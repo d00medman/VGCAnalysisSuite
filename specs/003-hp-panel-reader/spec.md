@@ -39,6 +39,15 @@ The panels are up every turn during move selection, in every recording.
   `Go! Big Man!`.
 - **Shiny Pokémon count as their species.** `Decided:` a shiny's icon has different colours,
   so matching has to work on shape, not colour alone.
+- **Matching uses shape and colour together.** `Decided`; details go in the plan.
+  - **Several templates per species,** as the glyph atlas holds many per character. A shiny
+    seen under a readable name becomes another template for its species automatically.
+  - **Shape leads.** The icons' dark outlines are independent of shiny colours and of the
+    panel's pink or purple background.
+  - **Colour breaks ties** between similar shapes, e.g. Rotom or regional forms that differ
+    mainly in colour.
+
+  So an unseen shiny still matches on shape, and a normal icon matches on both.
 - **Unknown icons stay unknown.** An icon the library has never seen is reported as
   unknown, never as a best guess, and its crop is saved so it can be labelled.
 - **The icon library is built from your recordings.** When the transcript names a
