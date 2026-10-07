@@ -50,6 +50,15 @@ The panels are up every turn during move selection, in every recording.
   So an unseen shiny still matches on shape, and a normal icon matches on both.
 - **Unknown icons stay unknown.** An icon the library has never seen is reported as
   unknown, never as a best guess, and its crop is saved so it can be labelled.
+- **A manual review step is part of the tooling.** `Decided 2026-10-07.` One command
+  gathers icons that need a person: unknown icons, low-confidence matches, and the accuracy
+  set. It opens a review page in the browser:
+  - Each crop shown with its proposed species, taken from the nearest templates and from
+    transcript hints (e.g. "sent out Garchomp" in that slot).
+  - A one-click confirm, or a species picker limited to the battle's regulation.
+  - Decisions written back to the library's label file, ready for a rebuild.
+
+  The same tool could later label glyph crops for the text atlas.
 - **The icon library is built from your recordings.** When the transcript names a
   species in readable text ("sent out Garchomp!"), the icon that appears is a labelled
   example, so most labels need no hand-labelling.
@@ -88,7 +97,10 @@ Draft, with thresholds to settle in the plan.
    icons are listed with saved crops.
 4. **Unchanged transcripts.** Existing transcript text is unaffected; the species data is
    added alongside.
-5. **Re-run analysis.** The Batch 0 battle analysis, re-run with species, no longer counts
+5. **Review in minutes.** The review step handles about 100 crops in roughly 15 minutes: one
+   click per correct proposal. Its decisions appear in the label file and take effect on
+   the next library rebuild.
+6. **Re-run analysis.** The Batch 0 battle analysis, re-run with species, no longer counts
    any Pokémon under a nickname.
 
 ## Data
@@ -116,5 +128,11 @@ Not blocking (answered in the plan, from samples):
    slide-out frames, and what a fainted or empty slot looks like.
 6. **Megas and alternate forms** (Rotom forms, regional forms) need their own templates:
    either labelled as their form, or folded into their species for stats.
-7. **Where the reader runs:** inside the existing transcription pass, which decodes each
+7. **Template source.** The Bulbagarden Archives hosts ripped *Champions* menu sprites
+   (359 normal, 359 shiny, 128×128, Megas included).
+   - **If they're the same drawings as the panel icons,** they could seed the whole library
+     at once, and the transcript labels and the review step become checks and gap-fillers.
+   - **Not yet confirmed:** the user is saving the Garchomp sprite for comparison.
+   - **Either way,** game art stays out of git; a script fetches it.
+8. **Where the reader runs:** inside the existing transcription pass, which decodes each
    frame once anyway (cheapest), or as a separate pass.
