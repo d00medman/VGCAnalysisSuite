@@ -50,6 +50,8 @@ Every `spec.md` starts with one status:
 - `Approved`
 - `In progress`
 - `Done`
+- `Parked`: worth doing, deliberately set aside. The spec says why, and what would bring
+  it back.
 - `Dropped`
 
 ## Numbering

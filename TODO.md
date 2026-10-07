@@ -36,7 +36,8 @@ Running list of things we want to do. Details live in the linked devlogs.
 - [ ] **Sprite data.** Add sprites to the pokedex so the GUI can show them. The pokedex's
   names are PokeAPI-style slugs, so it can join to PokeAPI's sprites without a lookup
   table (see the naming note in `pokedex/ingest/showdown-snapshot.js`).
-- [ ] **Identify Pokémon on screen from pixels.** Optional, and possibly a lot of work.
+- [ ] **Identify Pokémon on screen from pixels.** Started as `specs/003-hp-panel-reader`: the
+  2D species icon in each HP panel, which is far easier than the 3D models. Optional, and possibly a lot of work.
   Recognise which Pokémon are on screen from the video frames, not just from the message
   text. Would likely build on the sprite data and the analyzer's approach of matching
   images against stored templates.

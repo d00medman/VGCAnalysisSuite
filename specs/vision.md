@@ -130,6 +130,7 @@ Ordered by dependency. Stage D can run alongside B and C.
    - Android, capture card and Switch 2 inputs. Switch 2 needs stitching first.
    - Transcribe Batch 1 to check the analyzer on newer footage
 5. **E: Data inferred from transcripts**
+   - Species from HP-panel icons → `003-hp-panel-reader` (next, chosen 2026-10-07)
    - Store inferred facts
    - Team preview processing
    - Richer GUI log text
@@ -158,6 +159,8 @@ Arrows show dependencies.
 | Notification redaction (iOS, then Android) | phase 2 | Planned, `DeploymentPlan.md` §4 |
 | Mark a battle's result by hand → detect forfeit from video | 1, 3 | TODO |
 | My Pokémon + teams (trainer table →) | 2 | TODO |
+| HP panel reader: species from icons (→ HP, status) | 3, 4 | Next, `003-hp-panel-reader` |
+| Non-Latin names shown in their own script | 1 | Parked, `002-non-latin-names` |
 | Team preview processing | 2, 4 | New |
 | Rental code import | 2 | Open, see §5 |
 | Stats page: wins/losses (result →) | 3 | New |
@@ -195,5 +198,7 @@ Arrows show dependencies.
   - render glyph templates from the game's font
   - send unknown names to an OCR engine such as Tesseract
 
-  Leaning toward the first, which recovers species in any script.
+  **Chosen 2026-10-07: species from the HP panel's 2D icon** (`003-hp-panel-reader`). It's on
+  screen every turn, in any script, with or without team preview. Showing names in their
+  own script is parked (`002-non-latin-names`).
 - **Native app:** what would it add over the mobile website, and when would it be worth it?
