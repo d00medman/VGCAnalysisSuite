@@ -138,7 +138,8 @@ Ordered by dependency. Stage D can run alongside B and C.
 6. **Optional:** sprites, then on-screen Pokémon recognition.
 7. **Dev tooling, any time:** per-branch Docker stacks. Lets parallel sessions, or the
    user, run several branches side by side, each with its own copy of the data.
-8. **Phase 2:** redaction, the job queue, auth and infrastructure
+8. **Phase 2:** first decide where decoding runs (§10). Then redaction, the job queue, auth
+   and infrastructure
    (`devlog/DeploymentPlan.md`). Also GPU decode, if the numbers justify it.
 
 The critical path to a usable product: **trainer table → hand-set result → wins/losses
@@ -179,6 +180,14 @@ Arrows show dependencies.
   manufacturer and OS version, so a fixed blur band may not be enough. Android recordings
   may also differ from iOS in resolution, aspect ratio and frame rate, which the analyzer
   would need to handle.
+- **Where decoding runs (decide before Phase 2 infrastructure):** server-side (as in
+  `devlog/DeploymentPlan.md`) or on the user's device. Server compute is affordable,
+  roughly $0.003–0.007 per battle [unverified list prices]. But every battle means a
+  ~1 GB upload from a phone, and the raw video (notifications, audio) has to be redacted
+  and stored. On-device decoding (browser WebCodecs + the reader compiled to WASM, or a
+  native app) uploads only the transcript and keeps video on the device, but browser
+  support for HEVC is uneven and pixels won't be bit-exact. Next step when Phase 2
+  approaches: a short spike comparing on-device transcripts with the server's.
 - **Non-Latin names:** player names and nicknames can be Japanese, Chinese or Korean, which
   the reader can't read (the atlas is Latin only). Names show as `???`, and a nicknamed
   opponent Pokémon loses its species. Options:
