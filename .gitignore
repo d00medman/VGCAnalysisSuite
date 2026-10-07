@@ -60,5 +60,8 @@ pokedex/ingest/.showdown/
 # Battle-table dumps from scripts/backup-battles.sh (local, not for git)
 backups/
 
-# Scratch area, e.g. transcripts from scripts/transcribe-all.sh
+# Scratch area, e.g. transcripts from scripts/transcribe-all.py
 sandbox/
+
+# Python bytecode from scripts/
+__pycache__/

@@ -29,14 +29,13 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-TRANSCRIPTS = REPO / "sandbox" / "transcripts"
+from transcripts import REPO, TRANSCRIPTS, read
+
 ATLAS = REPO / "analyzer" / "atlas" / "glyphs.txt"
 # Words the game prints that no clean line can supply, because the atlas lacks a character.
 EXTRA_WORDS = ["Pokémon", "Poké"]
 # A trainer's name opens these lines; nothing else in the game text comes first.
 PLAYER_LINE = re.compile(r"^(.+?) (sent out|withdrew) ")
-LINE = re.compile(r"^\[(\d+):(\d+\.\d+)\] (.*?)(  \[unclear\])?$")
 # A line with fewer letters than this, once the `?`s are gone, counts as unreadable.
 MIN_LETTERS = 4
 # Unreadable lines closer together than this (seconds) are one burst.
@@ -47,11 +46,8 @@ def load_lines(batches):
     """Yield (batch, video, seconds, text, unclear) for every transcript line."""
     for batch in batches:
         for txt in sorted(batch.glob("*.txt")):
-            for raw in txt.read_text().splitlines():
-                m = LINE.match(raw)
-                if m:
-                    secs = int(m[1]) * 60 + float(m[2])
-                    yield batch.name, txt.stem, secs, m[3], bool(m[4])
+            for line in read(txt):
+                yield batch.name, txt.stem, line.t, line.text, line.unclear
 
 
 def atlas_chars():
